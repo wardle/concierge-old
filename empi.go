@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"encoding/xml"
+	"flag"
 	"fmt"
+	"os"
 	"net/http"
    "strings"
    "io/ioutil"
@@ -11,15 +13,58 @@ import (
 )
 
 const (
-   endpointURL = "http://ndc06srvmpidev2.cymru.nhs.uk:23000/PatientDemographicsQueryWS.asmx"
-   //endpointURL = "https://mpitest.cymru.nhs.uk/PatientDemographicsQueryWS.asmx"
+   devEndpointURL = "http://ndc06srvmpidev2.cymru.nhs.uk:23000/PatientDemographicsQueryWS.asmx"
+   testEndpointURL = "https://mpitest.cymru.nhs.uk/PatientDemographicsQueryWS.asmx"
+   liveEndpointURL = ""
 )
+
+var serverTest = flag.Bool("test", false, "use test server (https://mpitest.cymru.nhs.uk/PatientDemographicsQueryWS.asmx)")
+var serverDev = flag.Bool("dev", true, "use dev server (http://ndc06srvmpidev2.cymru.nhs.uk:23000/PatientDemographicsQueryWS.asmx)")
+var serverLive = flag.Bool("live", false, "use live server (?)")
+var nnn = flag.String("nnn", "", "NHS number to fetch e.g. 7253698428, 7705820730, 6145933267")
 
 // unset http_proxy
 func main() {
-   testNNN := "7253698428" // test endpoint standard NHS number
-   data := nhsNumberRequest(testNNN)
-  // fmt.Printf("Sending request: %s", data)
+	httpProxy, exists := os.LookupEnv("http_proxy")
+	if exists {
+		fmt.Printf("warning: http proxy set to %s\n", httpProxy)
+	}
+	httpsProxy, exists := os.LookupEnv("https_proxy")
+	if exists {
+		fmt.Printf("warning: https proxy set to %s\n", httpsProxy)
+	}
+	flag.Parse()
+	var endpointURL string
+	if *serverDev {
+		endpointURL = devEndpointURL
+	} else if *serverTest {
+		endpointURL = testEndpointURL
+	} else if *serverLive {
+		endpointURL = liveEndpointURL
+	}
+	if endpointURL == "" {
+		panic("error: no endpoint specified")
+	}
+	fmt.Printf("using endpoint: %s\n", endpointURL)
+
+	// handle a command-line test with a specified NHS number
+	if *nnn != "" {
+		envelope, err := performRequest(endpointURL, *nnn)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Printf("surname: %s\n", envelope.GetSurname())
+		fmt.Printf("first names: %s\n", envelope.GetFirstnames())
+		fmt.Printf("title: %s\n", envelope.GetTitle())
+		fmt.Printf("sex: %s\n", envelope.GetSex())
+		fmt.Printf("dob: %s\n", envelope.GetDateBirth())
+		fmt.Printf("dod: %v\n", envelope.GetDateDeath())
+	}
+
+}
+
+func performRequest(endpointURL string, nnn string) (*Envelope, error) {
+   data := nhsNumberRequest(nnn)
 	req, err := http.NewRequest("POST", endpointURL, bytes.NewReader(data))
 	if err != nil {
 		panic(err)
@@ -29,23 +74,19 @@ func main() {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
    body, err := ioutil.ReadAll(resp.Body)
    if err != nil {
-      panic(err)
+      return nil, err
    }
    defer resp.Body.Close()
    var envelope Envelope
    err = xml.Unmarshal(body, &envelope)
    if err != nil {
-      panic(err)
+      return nil, err
    }
-   fmt.Printf("surname: %s\n", envelope.GetSurname())
-   fmt.Printf("first names: %s\n", envelope.GetFirstnames())
-   fmt.Printf("title: %s\n", envelope.GetTitle())
-   fmt.Printf("sex: %s\n", envelope.GetSex())
-   fmt.Printf("dob: %s\n", envelope.GetDateBirth())
+   return &envelope, nil
 }
 
 
@@ -157,7 +198,8 @@ func nhsNumberRequest(nhsNumber string) []byte {
 // However, this doesn't take into account the possibility of repeating fields for certain PID entries.
 // See https://hl7-definition.caristix.com/v2/HL7v2.5.1/Segments/PID 
 // which documents that the following can be repeated: PID3 PID4 PID5 PID6 PID9 PID10 PID11 PID13 PID14 PID21 PID22 PID26 PID32
-// Therefore, these have been manually added as []struct rather than struct
+// Therefore, these have been manually added as []struct rather than struct.
+// Also, added PID.29 for date of death
 type Envelope struct {
 	XMLName xml.Name `xml:"Envelope"`
 	Text    string   `xml:",chardata"`
@@ -640,6 +682,17 @@ type Envelope struct {
 								LongName string `xml:"LongName,attr"`
 							} `xml:"CE.1"`
 						} `xml:"PID.28"`
+						PID29 struct {
+							Text     string `xml:",chardata"`
+							Item     string `xml:"Item,attr"`
+							Type     string `xml:"Type,attr"`
+							LongName string `xml:"LongName,attr"`
+							TS1      struct {
+								Text     string `xml:",chardata"`
+								Type     string `xml:"Type,attr"`
+								LongName string `xml:"LongName,attr"`
+							} `xml:"TS.1"`
+						} `xml:"PID.29"`
 					} `xml:"PID"`
 					PD1 struct {
 						Text string `xml:",chardata"`
@@ -678,20 +731,34 @@ type Patient struct {
 
 }
 
-
-
 func (e *Envelope) GetSurname() string {
-	return e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID5[0].XPN1.FN1.Text
+	names := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID5
+	if len(names) > 0 {
+		return names[0].XPN1.FN1.Text
+	}
+	return ""
 }
+
 func (e *Envelope) GetFirstnames() string {
-	return e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID5[0].XPN2.Text
+	names := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID5
+	if len(names) > 0 {
+		return names[0].XPN2.Text
+	}
+	return ""
 }
+
 func (e *Envelope) GetTitle() string {
-	return e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID5[0].XPN5.Text
+	names := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID5
+	if len(names) > 0 {
+		return names[0].XPN5.Text
+	}
+	return ""
 }
+
 func (e *Envelope) GetSex() string {
 	return e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID8.Text
 }
+
 func (e *Envelope) GetDateBirth() time.Time {
 	dob := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID7.TS1.Text
 	if len(dob) > 0 {
@@ -699,7 +766,17 @@ func (e *Envelope) GetDateBirth() time.Time {
 		if err == nil {
 			return d
 		}
-		panic(err)
+	}
+	return time.Time{}
+}
+
+func (e *Envelope) GetDateDeath() time.Time {
+	dod := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID29.TS1.Text
+	if len(dod) > 0 {
+		d, err := parseDate(dod)
+		if err == nil {
+			return d
+		}
 	}
 	return time.Time{}
 }
