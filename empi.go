@@ -40,10 +40,11 @@ func main() {
    if err != nil {
       panic(err)
    }
-   msh := envelope.Body.InvokePatientDemographicsQueryResponse.RSPK21.MSH
-   qpd := envelope.Body.InvokePatientDemographicsQueryResponse.RSPK21.QPD
-   fmt.Printf("msh: %v\n",msh)
-   fmt.Printf("\n\n\n\nqpd: %v\n",qpd)
+   fmt.Printf("surname: %s\n", envelope.GetSurname())
+   fmt.Printf("first names: %s\n", envelope.GetFirstnames())
+   fmt.Printf("title: %s\n", envelope.GetTitle())
+   fmt.Printf("sex: %s\n", envelope.GetSex())
+   fmt.Printf("dob: %s\n", envelope.GetDateBirth())
 }
 
 
@@ -665,3 +666,19 @@ type Envelope struct {
 		} `xml:"InvokePatientDemographicsQueryResponse"`
 	} `xml:"Body"`
 } 
+
+func (e *Envelope) GetSurname() string {
+	return e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID5.XPN1.FN1.Text
+}
+func (e *Envelope) GetFirstnames() string {
+	return e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID5.XPN2.Text
+}
+func (e *Envelope) GetTitle() string {
+	return e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID5.XPN5.Text
+}
+func (e *Envelope) GetSex() string {
+	return e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID8.Text
+}
+func (e *Envelope) GetDateBirth() string {
+	return e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID7.TS1.Text
+}
