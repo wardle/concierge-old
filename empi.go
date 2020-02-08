@@ -42,9 +42,6 @@ func main() {
 	} else if *serverLive {
 		endpointURL = liveEndpointURL
 	}
-	if endpointURL == "" {
-		panic("error: no endpoint specified")
-	}
 	fmt.Printf("using endpoint: %s\n", endpointURL)
 
 	// handle a command-line test with a specified NHS number
@@ -53,12 +50,13 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
+		fmt.Printf("result for nnn: %s:", *nnn)
 		fmt.Printf("surname: %s\n", envelope.GetSurname())
 		fmt.Printf("first names: %s\n", envelope.GetFirstnames())
 		fmt.Printf("title: %s\n", envelope.GetTitle())
-		fmt.Printf("sex: %s\n", envelope.GetSex())
-		fmt.Printf("dob: %s\n", envelope.GetDateBirth())
-		fmt.Printf("dod: %v\n", envelope.GetDateDeath())
+		fmt.Printf(" sex: %s\n", envelope.GetSex())
+		fmt.Printf(" dob: %s\n", envelope.GetDateBirth())
+		fmt.Printf(" dod: %v\n", envelope.GetDateDeath())
 	}
 
 }
