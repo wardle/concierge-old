@@ -6,8 +6,6 @@ import (
 	"encoding/xml"
 	"flag"
 	"fmt"
-	"github.com/gorilla/mux"
-	"github.com/patrickmn/go-cache"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -17,33 +15,35 @@ import (
 	"syscall"
 	"text/template"
 	"time"
-)
 
+	"github.com/gorilla/mux"
+	"github.com/patrickmn/go-cache"
+)
 
 type Endpoint int
 
 const (
-	UnknownEndpoint Endpoint = iota 		// unknown
-	ProductionEndpoint			 			// production server
-	TestingEndpoint							// user acceptance testing
-	DevelopmentEndpoint						// development
+	UnknownEndpoint     Endpoint = iota // unknown
+	ProductionEndpoint                  // production server
+	TestingEndpoint                     // user acceptance testing
+	DevelopmentEndpoint                 // development
 )
 
-var endpointURLs = [...]string {
+var endpointURLs = [...]string{
 	"",
 	"",
 	"https://mpitest.cymru.nhs.uk/PatientDemographicsQueryWS.asmx",
 	"http://ndc06srvmpidev2.cymru.nhs.uk:23000/PatientDemographicsQueryWS.asmx",
 }
 
-var endpointNames = [...]string {
+var endpointNames = [...]string{
 	"Unknown",
 	"Production",
 	"Testing",
 	"Development",
 }
 
-var endpointCodes = [...]string {
+var endpointCodes = [...]string{
 	"",
 	"P",
 	"U",
@@ -84,7 +84,7 @@ func main() {
 		log.SetOutput(f)
 		log.SetFlags(log.LstdFlags | log.Lshortfile)
 	}
-	httpProxy, exists := os.LookupEnv("http_proxy")		// give warning if proxy set, as we don't need a proxy
+	httpProxy, exists := os.LookupEnv("http_proxy") // give warning if proxy set, as we don't need a proxy
 	if exists {
 		log.Printf("warning: http proxy set to %s\n", httpProxy)
 	}
@@ -93,7 +93,7 @@ func main() {
 		log.Printf("warning: https proxy set to %s\n", httpsProxy)
 	}
 	ep := lookupEndpoint(*endpoint)
-	if endpointURLs[ep] == ""  {
+	if endpointURLs[ep] == "" {
 		log.Fatalf("unknown or unsupported endpoint: %s", *endpoint)
 	}
 
@@ -114,10 +114,10 @@ func main() {
 	}
 
 	if *serve {
-		sigs := make(chan os.Signal, 1)		// channel to receive OS signals
+		sigs := make(chan os.Signal, 1) // channel to receive OS signals
 		signal.Notify(sigs, os.Interrupt, os.Kill, syscall.SIGTERM)
 		go func() {
-			s := <- sigs
+			s := <-sigs
 			log.Printf("RECEIVED SIGNAL: %s", s)
 			os.Exit(1)
 		}()
@@ -126,7 +126,7 @@ func main() {
 		app.Router = mux.NewRouter().StrictSlash(true)
 		app.Fake = *fake
 		if *cacheExpires != 0 {
-			app.Cache = cache.New(time.Duration(*cacheExpires) * time.Minute, time.Duration(*cacheExpires * 2) * time.Minute)
+			app.Cache = cache.New(time.Duration(*cacheExpires)*time.Minute, time.Duration(*cacheExpires*2)*time.Minute)
 		}
 		app.Router.HandleFunc("/users/{user}/nnn/{nnn}", app.getNhsNumber).Methods("GET")
 		log.Printf("starting REST server on port %d, cache: %d mins, endpoint: (%s) %s ", *port, *cacheExpires, endpointNames[ep], endpointURLs[ep])
@@ -138,9 +138,9 @@ func main() {
 
 type App struct {
 	Endpoint Endpoint
-	Router *mux.Router
-	Cache *cache.Cache	// may be nil if not caching
-	Fake bool
+	Router   *mux.Router
+	Cache    *cache.Cache // may be nil if not caching
+	Fake     bool
 }
 
 func (a *App) getCache(key string) (*Patient, bool) {
@@ -180,7 +180,7 @@ func (a *App) getNhsNumber(w http.ResponseWriter, r *http.Request) {
 		a.setCache(nnn, pt)
 	} else {
 		log.Printf("serving request for %s from cache in %s", nnn, time.Since(start))
-	}	
+	}
 	if pt == nil {
 		log.Printf("patient with identifier %s not found", nnn)
 		http.NotFound(w, r)
@@ -189,28 +189,28 @@ func (a *App) getNhsNumber(w http.ResponseWriter, r *http.Request) {
 	log.Printf("result: %+v", pt)
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	if err := json.NewEncoder(w).Encode(pt); err != nil {
-		log.Printf("error: %s",err)
+		log.Printf("error: %s", err)
 	}
 }
 
 func performFake(nnn string) (*Patient, error) {
-	dob := time.Date(1960,01,01,00,00,00,0, time.UTC)
-	
+	dob := time.Date(1960, 01, 01, 00, 00, 00, 0, time.UTC)
+
 	return &Patient{
-		Lastname: "DUMMY",
-		Firstnames: "ALBERT",
-		Title: "DR",
-		DateBirth: &dob,
-		Surgery: "W95010",
+		Lastname:            "DUMMY",
+		Firstnames:          "ALBERT",
+		Title:               "DR",
+		DateBirth:           &dob,
+		Surgery:             "W95010",
 		GeneralPractitioner: "G9342400",
 		Identifiers: []Identifier{
 			Identifier{
 				Authority: "NHS",
-				ID: nnn,
+				ID:        nnn,
 			},
 			Identifier{
 				Authority: "103",
-				ID: "M1147907",
+				ID:        "M1147907",
 			},
 		},
 		Addresses: []Address{
@@ -223,7 +223,7 @@ func performFake(nnn string) (*Patient, error) {
 		},
 		Telephones: []Telephone{
 			Telephone{
-				Number: "02920747747",
+				Number:      "02920747747",
 				Description: "Work number",
 			},
 		},
@@ -254,7 +254,7 @@ func performRequest(endpointURL string, processingID string, nnn string) (*Patie
 	}
 	defer resp.Body.Close()
 	var e envelope
-	log.Printf("response (%s): %v",time.Since(start), string(body))
+	log.Printf("response (%s): %v", time.Since(start), string(body))
 	err = xml.Unmarshal(body, &e)
 	if err != nil {
 		return nil, err
@@ -270,7 +270,7 @@ type NhsNumberRequest struct {
 	ReceivingApplication string
 	ReceivingFacility    string
 	DateTime             string
-	ProcessingID		 string			//for MSH.11 - P/U/T production/testing/development
+	ProcessingID         string //for MSH.11 - P/U/T production/testing/development
 }
 
 // NewNhsNumberRequest returns a correctly formatted XML request to search by NHS number
@@ -286,7 +286,7 @@ func NewNhsNumberRequest(nnn string, sender string, receiver string, processingI
 		ReceivingApplication: receiver,
 		ReceivingFacility:    receiver,
 		DateTime:             now,
-		ProcessingID:	      processingID,
+		ProcessingID:         processingID,
 	}
 	t, err := template.New("nhs-number-request").Parse(nhsNumberRequestTemplate)
 	if err != nil {
@@ -308,33 +308,33 @@ type Identifier struct {
 
 // Address represents an address for this patient
 type Address struct {
-	Address1 string	`json:"address1"`
-	Address2 string `json:"address2"`
-	Address3 string `json:"address3"`
-	Address4 string `json:"address4"`
-	Postcode string `json:"postcode"`
-	DateFrom *time.Time	`json:"dateFrom"`	// valid from
-	DateTo *time.Time	`json:"dateTo"`		// valid to
+	Address1 string     `json:"address1"`
+	Address2 string     `json:"address2"`
+	Address3 string     `json:"address3"`
+	Address4 string     `json:"address4"`
+	Postcode string     `json:"postcode"`
+	DateFrom *time.Time `json:"dateFrom"` // valid from
+	DateTo   *time.Time `json:"dateTo"`   // valid to
 }
 
 // Patient is a patient
 type Patient struct {
-	Lastname    string `json:"lastName"`
-	Firstnames  string `json:"firstNames"`
-	Title       string `json:"title"`
-	DateBirth   *time.Time `json:"dateBirth"`
-	DateDeath   *time.Time `json:"dateDeath"`
-	Surgery		string `json:"surgery"`
-	GeneralPractitioner string `json:"generalPractitioner"`
-	Identifiers []Identifier `json:"identifiers"`
-	Addresses   []Address `json:"addresses"`
-	Telephones	[]Telephone `json:"telephones"`
-	EmailAddresses []string `json:"emailAddresses"`
+	Lastname            string       `json:"lastName"`
+	Firstnames          string       `json:"firstNames"`
+	Title               string       `json:"title"`
+	DateBirth           *time.Time   `json:"dateBirth"`
+	DateDeath           *time.Time   `json:"dateDeath"`
+	Surgery             string       `json:"surgery"`
+	GeneralPractitioner string       `json:"generalPractitioner"`
+	Identifiers         []Identifier `json:"identifiers"`
+	Addresses           []Address    `json:"addresses"`
+	Telephones          []Telephone  `json:"telephones"`
+	EmailAddresses      []string     `json:"emailAddresses"`
 }
 
 type Telephone struct {
-	Number 		string		`json:"telephone"`
-	Description string 		`json:"description"`
+	Number      string `json:"telephone"`
+	Description string `json:"description"`
 }
 
 // ToPatient creates a "Patient" from the XML returned from the EMPI service
@@ -432,7 +432,7 @@ func (e *envelope) identifiers() []Identifier {
 }
 
 func (e *envelope) addresses() []Address {
-	result := make([]Address,  0)
+	result := make([]Address, 0)
 	addresses := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID11
 	for _, address := range addresses {
 		dateFrom, _ := parseDate(address.XAD13.Text)
@@ -444,30 +444,30 @@ func (e *envelope) addresses() []Address {
 			Address4: address.XAD4.Text,
 			Postcode: address.XAD5.Text,
 			DateFrom: dateFrom,
-			DateTo: dateTo,
+			DateTo:   dateTo,
 		})
 	}
 	return result
 }
 
 func (e *envelope) telephones() []Telephone {
-	result := make([]Telephone,0)
+	result := make([]Telephone, 0)
 	pid13 := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID13
 	for _, telephone := range pid13 {
-		num := telephone.XTN1.Text 
+		num := telephone.XTN1.Text
 		if num != "" {
 			result = append(result, Telephone{
-				Number: num,
+				Number:      num,
 				Description: telephone.LongName,
 			})
 		}
 	}
 	pid14 := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID14
 	for _, telephone := range pid14 {
-		num := telephone.XTN1.Text 
+		num := telephone.XTN1.Text
 		if num != "" {
 			result = append(result, Telephone{
-				Number: num,
+				Number:      num,
 				Description: telephone.LongName,
 			})
 		}
@@ -476,24 +476,23 @@ func (e *envelope) telephones() []Telephone {
 }
 
 func (e *envelope) emailAddresses() []string {
-	result := make([]string,0)
+	result := make([]string, 0)
 	pid13 := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID13
 	for _, telephone := range pid13 {
-		email := telephone.XTN4.Text 
+		email := telephone.XTN4.Text
 		if email != "" {
 			result = append(result, email)
 		}
 	}
 	pid14 := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID14
 	for _, telephone := range pid14 {
-		email := telephone.XTN4.Text 
+		email := telephone.XTN4.Text
 		if email != "" {
 			result = append(result, email)
 		}
 	}
 	return result
 }
-
 
 func parseDate(d string) (*time.Time, error) {
 	layout := "20060102" // reference date is : Mon Jan 2 15:04:05 MST 2006
