@@ -326,6 +326,7 @@ type Patient struct {
 	Lastname            string       `json:"lastName"`
 	Firstnames          string       `json:"firstNames"`
 	Title               string       `json:"title"`
+	Sex                 string       `json:"sex"`
 	DateBirth           *time.Time   `json:"dateBirth"`
 	DateDeath           *time.Time   `json:"dateDeath"`
 	Surgery             string       `json:"surgery"`
@@ -350,6 +351,7 @@ func (e *envelope) ToPatient() (*Patient, error) {
 		return nil, nil
 	}
 	pt.Title = e.title()
+	pt.Sex = e.sex()
 	pt.DateBirth = e.dateBirth()
 	pt.DateDeath = e.dateDeath()
 	pt.Identifiers = e.identifiers()
