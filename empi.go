@@ -20,8 +20,10 @@ import (
 	"github.com/patrickmn/go-cache"
 )
 
+// Endpoint represents a specific SOAP server providing access to "enterprise master patient index" (EMPI) data
 type Endpoint int
 
+// A list of endpoints
 const (
 	UnknownEndpoint     Endpoint = iota // unknown
 	ProductionEndpoint                  // production server
@@ -174,6 +176,7 @@ func (a *App) getNhsNumber(w http.ResponseWriter, r *http.Request) {
 			pt, err = performFake(nnn)
 		}
 		if err != nil {
+			log.Printf("error: %s", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -190,6 +193,7 @@ func (a *App) getNhsNumber(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	if err := json.NewEncoder(w).Encode(pt); err != nil {
 		log.Printf("error: %s", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
