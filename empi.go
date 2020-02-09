@@ -34,7 +34,7 @@ const (
 
 var endpointURLs = [...]string{
 	"",
-	"http://slowwly.robertomurray.co.uk/delay/5000/url/http://www.google.co.uk",
+	"",
 	"https://mpitest.cymru.nhs.uk/PatientDemographicsQueryWS.asmx",
 	"http://ndc06srvmpidev2.cymru.nhs.uk:23000/PatientDemographicsQueryWS.asmx",
 }
