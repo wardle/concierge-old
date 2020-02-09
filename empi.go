@@ -101,7 +101,9 @@ func main() {
 		app.Router.HandleFunc("/users/{user}/nnn/{nnn}", app.getNhsNumber).Methods("GET")
 		log.Printf("starting REST server on port %d, cache: %d mins", *port, *cacheExpires)
 		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), app.Router))
+		return
 	}
+	flag.PrintDefaults()
 }
 
 type App struct {
@@ -287,6 +289,13 @@ type Patient struct {
 	GeneralPractitioner string `json:"generalPractitioner"`
 	Identifiers []Identifier `json:"identifiers"`
 	Addresses   []Address `json:"addresses"`
+	Telephones	[]Telephone `json:"telephones"`
+	EmailAddresses []string `json:"emailAddresses"`
+}
+
+type Telephone struct {
+	Number 		string		`json:"telephone"`
+	Description string 		`json:"description"`
 }
 
 // ToPatient creates a "Patient" from the XML returned from the EMPI service
@@ -304,6 +313,8 @@ func (e *envelope) ToPatient() (*Patient, error) {
 	pt.Addresses = e.addresses()
 	pt.Surgery = e.surgery()
 	pt.GeneralPractitioner = e.generalPractitioner()
+	pt.Telephones = e.telephones()
+	pt.EmailAddresses = e.emailAddresses()
 	return pt, nil
 }
 
@@ -399,6 +410,34 @@ func (e *envelope) addresses() []Address {
 	}
 	return result
 }
+
+func (e *envelope) telephones() []Telephone {
+	result := make([]Telephone,0)
+	telephones := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID13
+	for _, telephone := range telephones {
+		num := telephone.XTN1.Text 
+		if num != "" {
+		result = append(result, Telephone{
+			Number: num,
+			Description: telephone.LongName,
+		})
+	}
+	}
+	return result
+}
+
+func (e *envelope) emailAddresses() []string {
+	result := make([]string,0)
+	telephones := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID13
+	for _, telephone := range telephones {
+		email := telephone.XTN4.Text 
+		if email != "" {
+			result = append(result, email)
+		}
+	}
+	return result
+}
+
 
 func parseDate(d string) (*time.Time, error) {
 	layout := "20060102" // reference date is : Mon Jan 2 15:04:05 MST 2006
