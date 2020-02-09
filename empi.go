@@ -2,8 +2,11 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"encoding/xml"
 	"flag"
+	"fmt"
+	"github.com/gorilla/mux"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -11,6 +14,7 @@ import (
 	"text/template"
 	"time"
 )
+
 
 const (
 	devEndpointURL  = "http://ndc06srvmpidev2.cymru.nhs.uk:23000/PatientDemographicsQueryWS.asmx"
@@ -22,10 +26,23 @@ var serverTest = flag.Bool("test", false, "use test server (https://mpitest.cymr
 var serverDev = flag.Bool("dev", true, "use dev server (http://ndc06srvmpidev2.cymru.nhs.uk:23000/PatientDemographicsQueryWS.asmx)")
 var serverLive = flag.Bool("live", false, "use live server (?)")
 var nnn = flag.String("nnn", "", "NHS number to fetch e.g. 7253698428, 7705820730, 6145933267")
+var logger = flag.String("log", "", "logfile to use")
+var serve = flag.Bool("serve", false, "whether to start a REST server")
+var port = flag.Int("port", 8080, "port to use")
 
 // unset http_proxy
 // unset https_proxy
 func main() {
+	flag.Parse()
+	if *logger != "" {
+		f, err := os.OpenFile(*logger, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
+		if err != nil {
+			fmt.Printf("fatal error. couldn't open log file ('%s'): %s", *logger, err)
+			os.Exit(1)
+		}
+		log.SetOutput(f)
+		log.SetFlags(log.LstdFlags | log.Lshortfile)
+	}
 	httpProxy, exists := os.LookupEnv("http_proxy")		// give warning if proxy set, as we don't need a proxy
 	if exists {
 		log.Printf("warning: http proxy set to %s\n", httpProxy)
@@ -34,7 +51,6 @@ func main() {
 	if exists {
 		log.Printf("warning: https proxy set to %s\n", httpsProxy)
 	}
-	flag.Parse()
 	var endpointURL string
 	if *serverDev {
 		endpointURL = devEndpointURL
@@ -58,6 +74,37 @@ func main() {
 		}
 		log.Printf("result for %s: %+v\n", *nnn, pt)
 	}
+
+	if *serve {
+		router := mux.NewRouter().StrictSlash(true)
+		router.HandleFunc("/users/{user}/nnn/{nnn}", getNhsNumber).Methods("GET")
+		log.Printf("starting REST server on port %d", *port)
+		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), router))
+	}
+}
+
+
+
+
+func getNhsNumber(w http.ResponseWriter, r *http.Request) {
+	user := mux.Vars(r)["user"]
+	nnn := mux.Vars(r)["nnn"]
+	log.Printf("request by user: '%s' for nnn: '%s': %+v", user, nnn, r)
+	envelope, err := performRequest(devEndpointURL, nnn)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	pt, err := envelope.ToPatient()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	if err := json.NewEncoder(w).Encode(pt); err != nil {
+		panic(err)
+	}
+
 }
 
 func performRequest(endpointURL string, nnn string) (*Envelope, error) {
@@ -118,7 +165,7 @@ func NewNhsNumberRequest(nnn string, sender string, receiver string) ([]byte, er
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("created request: %+v", data)
+	log.Printf("request: %+v", data)
 	var buf bytes.Buffer
 	if err := t.Execute(&buf, data); err != nil {
 		return nil, err
