@@ -98,7 +98,7 @@ func main() {
 	}
 	ep := lookupEndpoint(*endpoint)
 	if endpointURLs[ep] == "" {
-		log.Fatalf("unknown or unsupported endpoint: %s", *endpoint)
+		log.Fatalf("error: unknown or unsupported endpoint: %s", *endpoint)
 	}
 
 	// handle a command-line test with a specified NHS number
@@ -135,7 +135,7 @@ func main() {
 			app.Cache = cache.New(time.Duration(*cacheMinutes)*time.Minute, time.Duration(*cacheMinutes*2)*time.Minute)
 		}
 		app.Router.HandleFunc("/users/{user}/nnn/{nnn}", app.getNhsNumber).Methods("GET")
-		log.Printf("starting REST server: port:%d cache:%dm timeout:%ds endpoint:(%s)%s ",
+		log.Printf("starting REST server: port:%d cache:%dm timeout:%ds endpoint:(%s)%s",
 			*port, *cacheMinutes, *timeoutSeconds, endpointNames[ep], endpointURLs[ep])
 		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), app.Router))
 		return
