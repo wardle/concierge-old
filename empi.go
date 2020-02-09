@@ -5,17 +5,17 @@ import (
 	"encoding/xml"
 	"flag"
 	"fmt"
-	"os"
+	"io/ioutil"
 	"net/http"
-   "strings"
-   "io/ioutil"
-   "time"
+	"os"
+	"text/template"
+	"time"
 )
 
 const (
-   devEndpointURL = "http://ndc06srvmpidev2.cymru.nhs.uk:23000/PatientDemographicsQueryWS.asmx"
-   testEndpointURL = "https://mpitest.cymru.nhs.uk/PatientDemographicsQueryWS.asmx"
-   liveEndpointURL = ""
+	devEndpointURL  = "http://ndc06srvmpidev2.cymru.nhs.uk:23000/PatientDemographicsQueryWS.asmx"
+	testEndpointURL = "https://mpitest.cymru.nhs.uk/PatientDemographicsQueryWS.asmx"
+	liveEndpointURL = ""
 )
 
 var serverTest = flag.Bool("test", false, "use test server (https://mpitest.cymru.nhs.uk/PatientDemographicsQueryWS.asmx)")
@@ -58,11 +58,13 @@ func main() {
 		fmt.Printf(" dob: %s\n", envelope.GetDateBirth())
 		fmt.Printf(" dod: %v\n", envelope.GetDateDeath())
 	}
-
 }
 
 func performRequest(endpointURL string, nnn string) (*Envelope, error) {
-   data := nhsNumberRequest(nnn)
+	data, err := NewNhsNumberRequest(nnn, "221", "100")
+	if err != nil {
+		return nil, err
+	}
 	req, err := http.NewRequest("POST", endpointURL, bytes.NewReader(data))
 	if err != nil {
 		panic(err)
@@ -74,127 +76,269 @@ func performRequest(endpointURL string, nnn string) (*Envelope, error) {
 	if err != nil {
 		return nil, err
 	}
-   body, err := ioutil.ReadAll(resp.Body)
-   if err != nil {
-      return nil, err
-   }
-   defer resp.Body.Close()
-   var envelope Envelope
-   err = xml.Unmarshal(body, &envelope)
-   if err != nil {
-      return nil, err
-   }
-   return &envelope, nil
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var envelope Envelope
+	err = xml.Unmarshal(body, &envelope)
+	if err != nil {
+		return nil, err
+	}
+	return &envelope, nil
 }
 
+// NhsNumberRequest is used to populate the template to make the XML request
+type NhsNumberRequest struct {
+	NhsNumber            string
+	SendingApplication   string
+	SendingFacility      string
+	ReceivingApplication string
+	ReceivingFacility    string
+	DateTime             string
+}
 
-// nhsNumberRequest generates an XML request using the NHS number specified.
-// More complex XML requests could use the text/template library using a data struct and fields specified
-// using, for example: {{.NhsNumber}}
-//
-func nhsNumberRequest(nhsNumber string) []byte {
+// NewNhsNumberRequest returns a correctly formatted XML request to search by NHS number
+// sender : 221 (PatientCare)
+// receiver: 100 (NHS Wales EMPI)
+func NewNhsNumberRequest(nnn string, sender string, receiver string) ([]byte, error) {
+	layout := "20060102150405" // YYYYMMDDHHMMSS
+	now := time.Now().Format(layout)
+	data := NhsNumberRequest{
+		NhsNumber:            nnn,
+		SendingApplication:   sender,
+		SendingFacility:      sender,
+		ReceivingApplication: receiver,
+		ReceivingFacility:    receiver,
+		DateTime:             now,
+	}
+	t, err := template.New("nhs-number-request").Parse(nhsNumberRequestTemplate)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	return buf.Bytes(), t.Execute(&buf, data)
+}
 
-	request := `
-   <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:mpi="http://apps.wales.nhs.uk/mpi/" xmlns="urn:hl7-org:v2xml">
-   <soapenv:Header/>
-   <soapenv:Body>
-      <mpi:InvokePatientDemographicsQuery>
+// Identifier represents an organisation's identifier for this patient
+type Identifier struct {
+	Authority string
+	ID        string
+}
 
-         <QBP_Q21>
+// Address represents an address for this patient
+type Address struct {
+	Address1 string
+	Address2 string
+	Address3 string
+	Address4 string
+	Postcode string
+}
 
-            <MSH>
-            	<!--Field Separator -->
-               <MSH.1>|</MSH.1>
-               <!-- Encoding Characters -->
-               <MSH.2>^~\&amp;</MSH.2>
-               <!-- Sending Application -->
-               <MSH.3 >
-                  <HD.1>221</HD.1>
-               </MSH.3>
-               <!-- Sending Facility -->
-               <MSH.4 >
-                  <HD.1>221</HD.1>
-               </MSH.4>
-               <!-- Receiving Application -->
-               <MSH.5>
-                  <HD.1>100</HD.1>
-               </MSH.5>
-               <!-- Receiving Application -->
-               <MSH.6>
-                  <HD.1>100</HD.1>
-               </MSH.6>
-               <!-- Date / Time of message YYYYMMDDHHMMSS -->
-               <MSH.7>
-                  <TS.1>20191210131400</TS.1>
-               </MSH.7>
-               <!-- Message Type -->
-               <MSH.9>
-                  <MSG.1 >QBP</MSG.1>
-                  <MSG.2 >Q22</MSG.2>
-                  <MSG.3 >QBP_Q21</MSG.3>
-               </MSH.9>
-               <!-- Message Control ID -->
-               <MSH.10>PDQ Message</MSH.10>
-               <MSH.11>
-                  <PT.1 >P</PT.1>
-               </MSH.11>
-               <!-- Version Id -->
-               <MSH.12>
-                  <VID.1 >2.5</VID.1>
-               </MSH.12>
-               <!-- Country Code -->
-               <MSH.17 >GBR</MSH.17>
-            </MSH>
+// Patient is a patient
+type Patient struct {
+	Lastname    string
+	Firstnames  string
+	Title       string
+	DateBirth   time.Time
+	DateDeath   time.Time
+	Identifiers []Identifier
+	Addresses   []Address
+}
 
-            <QPD>
-               <QPD.1 >
-                  <!--Message Query Name :-->
-                  <CE.1>IHE PDQ Query</CE.1>
-               </QPD.1>
-               <!--Query Tag:-->
-               <QPD.2>PatientQuery</QPD.2>
- 			<!--Demographic Fields:-->
-               <!--Zero or more repetitions:-->
-               <QPD.3>
-                  <!--PID.3 - Patient Identifier List:-->
-                  <QIP.1>@PID.3.1</QIP.1>
-                  <QIP.2>%s</QIP.2>
-               </QPD.3>
-               <QPD.3>
-                  <!--PID.3 - Patient Identifier List:-->
-                  <QIP.1>@PID.3.4</QIP.1>
-                  <QIP.2>NHS</QIP.2>
-               </QPD.3>
-               <QPD.3>
-                  <!--PID.3 - Patient Identifier List:-->
-                  <QIP.1>@PID.3.5</QIP.1>
-                  <QIP.2>NH</QIP.2>
-               </QPD.3>
-            </QPD>
+// ToPatient creates a "Patient" from the XML returned from the EMPI service
+func (e *Envelope) ToPatient() (*Patient, error) {
+	pt := new(Patient)
+	pt.Lastname = e.GetSurname()
+	pt.Firstnames = e.GetFirstnames()
+	pt.Title = e.GetTitle()
+	pt.DateBirth = e.GetDateBirth()
+	pt.DateDeath = e.GetDateDeath()
+	pt.Identifiers = e.GetIdentifiers()
+	return pt, nil
+}
 
-            <RCP>
-               <!--Query Priority:-->
-               <RCP.1 >I</RCP.1>
-               <!--Quantity Limited Request:-->
-               <RCP.2 >
-                  <CQ.1>50</CQ.1>
-               </RCP.2>
+func (e *Envelope) GetSurname() string {
+	names := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID5
+	if len(names) > 0 {
+		return names[0].XPN1.FN1.Text
+	}
+	return ""
+}
 
-            </RCP>
+func (e *Envelope) GetFirstnames() string {
+	names := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID5
+	if len(names) > 0 {
+		return names[0].XPN2.Text
+	}
+	return ""
+}
 
-         </QBP_Q21>
-      </mpi:InvokePatientDemographicsQuery>
-   </soapenv:Body>
+func (e *Envelope) GetTitle() string {
+	names := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID5
+	if len(names) > 0 {
+		return names[0].XPN5.Text
+	}
+	return ""
+}
+
+func (e *Envelope) GetSex() string {
+	return e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID8.Text
+}
+
+func (e *Envelope) GetDateBirth() time.Time {
+	dob := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID7.TS1.Text
+	if len(dob) > 0 {
+		d, err := parseDate(dob)
+		if err == nil {
+			return d
+		}
+	}
+	return time.Time{}
+}
+
+func (e *Envelope) GetDateDeath() time.Time {
+	dod := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID29.TS1.Text
+	if len(dod) > 0 {
+		d, err := parseDate(dod)
+		if err == nil {
+			return d
+		}
+	}
+	return time.Time{}
+}
+
+func (e *Envelope) GetSurgery() string {
+	return e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PD1.PD13.XON3.Text
+}
+
+func (e *Envelope) GetGeneralPractitioner() string {
+	return e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PD1.PD14.XCN1.Text
+}
+
+// GetIdentifiers parses the PID.3 response and returns a map of authority identifiers to
+func (e *Envelope) GetIdentifiers() []Identifier {
+	result := make([]Identifier, 0)
+	ids := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID3
+	for _, id := range ids {
+		authority := id.CX4.HD1.Text
+		identifier := id.CX1.Text
+		if authority != "" && identifier != "" {
+			result = append(result, Identifier{
+				Authority: authority,
+				ID:        identifier,
+			})
+		}
+	}
+	return result
+}
+
+func parseDate(d string) (time.Time, error) {
+	layout := "20060102" // reference date is : Mon Jan 2 15:04:05 MST 2006
+	if len(d) > 8 {
+		d = d[:8]
+	}
+	return time.Parse(layout, d)
+}
+
+var nhsNumberRequestTemplate = `
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:mpi="http://apps.wales.nhs.uk/mpi/" xmlns="urn:hl7-org:v2xml">
+<soapenv:Header/>
+<soapenv:Body>
+   <mpi:InvokePatientDemographicsQuery>
+
+	  <QBP_Q21>
+
+		 <MSH>
+			 <!--Field Separator -->
+			<MSH.1>|</MSH.1>
+			<!-- Encoding Characters -->
+			<MSH.2>^~\&amp;</MSH.2>
+			<!-- Sending Application -->
+			<MSH.3 >
+			   <HD.1>{{.SendingApplication}}</HD.1>
+			</MSH.3>
+			<!-- Sending Facility -->
+			<MSH.4 >
+			   <HD.1>{{.SendingFacility}}</HD.1>
+			</MSH.4>
+			<!-- Receiving Application -->
+			<MSH.5>
+			   <HD.1>{{.ReceivingApplication}}</HD.1>
+			</MSH.5>
+			<!-- Receiving Application -->
+			<MSH.6>
+			   <HD.1>{{.ReceivingFacility}}</HD.1>
+			</MSH.6>
+			<!-- Date / Time of message YYYYMMDDHHMMSS -->
+			<MSH.7>
+			   <TS.1>{{.DateTime}}</TS.1>
+			</MSH.7>
+			<!-- Message Type -->
+			<MSH.9>
+			   <MSG.1 >QBP</MSG.1>
+			   <MSG.2 >Q22</MSG.2>
+			   <MSG.3 >QBP_Q21</MSG.3>
+			</MSH.9>
+			<!-- Message Control ID -->
+			<MSH.10>PDQ Message</MSH.10>
+			<MSH.11>
+			   <PT.1 >P</PT.1>
+			</MSH.11>
+			<!-- Version Id -->
+			<MSH.12>
+			   <VID.1 >2.5</VID.1>
+			</MSH.12>
+			<!-- Country Code -->
+			<MSH.17 >GBR</MSH.17>
+		 </MSH>
+
+		 <QPD>
+			<QPD.1 >
+			   <!--Message Query Name :-->
+			   <CE.1>IHE PDQ Query</CE.1>
+			</QPD.1>
+			<!--Query Tag:-->
+			<QPD.2>PatientQuery</QPD.2>
+		  <!--Demographic Fields:-->
+			<!--Zero or more repetitions:-->
+			<QPD.3>
+			   <!--PID.3 - Patient Identifier List:-->
+			   <QIP.1>@PID.3.1</QIP.1>
+			   <QIP.2>{{.NhsNumber}}</QIP.2>
+			</QPD.3>
+			<QPD.3>
+			   <!--PID.3 - Patient Identifier List:-->
+			   <QIP.1>@PID.3.4</QIP.1>
+			   <QIP.2>NHS</QIP.2>
+			</QPD.3>
+			<QPD.3>
+			   <!--PID.3 - Patient Identifier List:-->
+			   <QIP.1>@PID.3.5</QIP.1>
+			   <QIP.2>NH</QIP.2>
+			</QPD.3>
+		 </QPD>
+
+		 <RCP>
+			<!--Query Priority:-->
+			<RCP.1 >I</RCP.1>
+			<!--Quantity Limited Request:-->
+			<RCP.2 >
+			   <CQ.1>50</CQ.1>
+			</RCP.2>
+
+		 </RCP>
+
+	  </QBP_Q21>
+   </mpi:InvokePatientDemographicsQuery>
+</soapenv:Body>
 </soapenv:Envelope>
 `
 
-	return []byte(strings.TrimSpace(fmt.Sprintf(request, nhsNumber)))
-}
-
-
 // Envelope is a struct generated by https://www.onlinetool.io/xmltogo/ from the XML returned from the server.
 // However, this doesn't take into account the possibility of repeating fields for certain PID entries.
-// See https://hl7-definition.caristix.com/v2/HL7v2.5.1/Segments/PID 
+// See https://hl7-definition.caristix.com/v2/HL7v2.5.1/Segments/PID
 // which documents that the following can be repeated: PID3 PID4 PID5 PID6 PID9 PID10 PID11 PID13 PID14 PID21 PID22 PID26 PID32
 // Therefore, these have been manually added as []struct rather than struct.
 // Also, added PID.29 for date of death
@@ -721,68 +865,4 @@ type Envelope struct {
 			} `xml:"RSP_K21"`
 		} `xml:"InvokePatientDemographicsQueryResponse"`
 	} `xml:"Body"`
-} 
-
-type Patient struct {
-	Lastname string
-	Firstnames string
-
-}
-
-func (e *Envelope) GetSurname() string {
-	names := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID5
-	if len(names) > 0 {
-		return names[0].XPN1.FN1.Text
-	}
-	return ""
-}
-
-func (e *Envelope) GetFirstnames() string {
-	names := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID5
-	if len(names) > 0 {
-		return names[0].XPN2.Text
-	}
-	return ""
-}
-
-func (e *Envelope) GetTitle() string {
-	names := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID5
-	if len(names) > 0 {
-		return names[0].XPN5.Text
-	}
-	return ""
-}
-
-func (e *Envelope) GetSex() string {
-	return e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID8.Text
-}
-
-func (e *Envelope) GetDateBirth() time.Time {
-	dob := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID7.TS1.Text
-	if len(dob) > 0 {
-		d, err := parseDate(dob)
-		if err == nil {
-			return d
-		}
-	}
-	return time.Time{}
-}
-
-func (e *Envelope) GetDateDeath() time.Time {
-	dod := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID29.TS1.Text
-	if len(dod) > 0 {
-		d, err := parseDate(dod)
-		if err == nil {
-			return d
-		}
-	}
-	return time.Time{}
-}
-
-func parseDate(d string) (time.Time, error) {
-	layout := "20060102"		// reference date is : Mon Jan 2 15:04:05 MST 2006
-	if len(d) > 8 {
-		d = d[:8]
-	}
-	return time.Parse(layout, d)
 }
