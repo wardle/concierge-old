@@ -33,6 +33,7 @@ var logger = flag.String("log", "", "logfile to use")
 var serve = flag.Bool("serve", false, "whether to start a REST server")
 var port = flag.Int("port", 8080, "port to use")
 var cacheExpires = flag.Int("cache", 5, "cache expiration in minutes, 0=no cache")
+var fake = flag.Bool("fake", false, "run a fake service")
 
 // unset http_proxy
 // unset https_proxy
@@ -68,30 +69,32 @@ func main() {
 
 	// handle a command-line test with a specified NHS number
 	if *nnn != "" {
-		envelope, err := performRequest(endpointURL, *nnn)
+		pt, err := performRequest(endpointURL, *nnn)
 		if err != nil {
 			panic(err)
 		}
-		pt, err := envelope.ToPatient()
-		if err != nil {
-			panic(err)
+		if pt == nil {
+			log.Printf("Not Found")
+			return
 		}
 		if err := json.NewEncoder(os.Stdout).Encode(pt); err != nil {
 			panic(err)
 		}
+		return
 	}
 
-	sigs := make(chan os.Signal, 1)		// channel to receive OS signals
-	signal.Notify(sigs, os.Interrupt, os.Kill, syscall.SIGTERM)
-	go func() {
-		s := <- sigs
-		log.Printf("RECEIVED SIGNAL: %s", s)
-		os.Exit(1)
-	}()
 	if *serve {
+		sigs := make(chan os.Signal, 1)		// channel to receive OS signals
+		signal.Notify(sigs, os.Interrupt, os.Kill, syscall.SIGTERM)
+		go func() {
+			s := <- sigs
+			log.Printf("RECEIVED SIGNAL: %s", s)
+			os.Exit(1)
+		}()
 		app := new(App)
 		app.EndpointURL = endpointURL
 		app.Router = mux.NewRouter().StrictSlash(true)
+		app.Fake = *fake
 		if *cacheExpires != 0 {
 			app.Cache = cache.New(time.Duration(*cacheExpires) * time.Minute, time.Duration(*cacheExpires * 2) * time.Minute)
 		}
@@ -105,6 +108,7 @@ type App struct {
 	EndpointURL string
 	Router *mux.Router
 	Cache *cache.Cache	// may be nil if not caching
+	Fake bool
 }
 
 func (a *App) getCache(key string) (*Patient, bool) {
@@ -130,13 +134,13 @@ func (a *App) getNhsNumber(w http.ResponseWriter, r *http.Request) {
 	log.Printf("request by user: '%s' for nnn: '%s': %+v", user, nnn, r)
 	start := time.Now()
 	pt, found := a.getCache(nnn)
+	var err error
 	if !found {
-		envelope, err := performRequest(a.EndpointURL, nnn)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+		if !a.Fake {
+			pt, err = performRequest(a.EndpointURL, nnn)
+		} else {
+			pt, err = performFake(nnn)
 		}
-		pt, err = envelope.ToPatient()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -157,7 +161,38 @@ func (a *App) getNhsNumber(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func performRequest(endpointURL string, nnn string) (*Envelope, error) {
+func performFake(nnn string) (*Patient, error) {
+	dob := time.Date(1960,01,01,00,00,00,0, time.UTC)
+	
+	return &Patient{
+		Lastname: "DUMMY",
+		Firstnames: "ALBERT",
+		Title: "DR",
+		DateBirth: &dob,
+		Surgery: "W95010",
+		GeneralPractitioner: "G9342400",
+		Identifiers: []Identifier{
+			Identifier{
+				Authority: "NHS",
+				ID: nnn,
+			},
+			Identifier{
+				Authority: "103",
+				ID: "M1147907",
+			},
+		},
+		Addresses: []Address{
+			Address{
+				Address1: "59 Robins Hill",
+				Address2: "Brackla",
+				Address3: "BRIDGEND",
+				Postcode: "CF31 2PJ",
+			},
+		},
+	}, nil
+}
+
+func performRequest(endpointURL string, nnn string) (*Patient, error) {
 	start := time.Now()
 	data, err := NewNhsNumberRequest(nnn, "221", "100")
 	if err != nil {
@@ -165,7 +200,7 @@ func performRequest(endpointURL string, nnn string) (*Envelope, error) {
 	}
 	req, err := http.NewRequest("POST", endpointURL, bytes.NewReader(data))
 	if err != nil {
-		log.Printf("error: %s", err)
+		return nil, err
 	}
 	req.Header.Set("Content-type", "text/xml; charset=\"utf-8\"")
 	req.Header.Set("SOAPAction", "http://apps.wales.nhs.uk/mpi/InvokePatientDemographicsQuery")
@@ -179,13 +214,13 @@ func performRequest(endpointURL string, nnn string) (*Envelope, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	var envelope Envelope
+	var e envelope
 	log.Printf("response (%s): %v",time.Since(start), string(body))
-	err = xml.Unmarshal(body, &envelope)
+	err = xml.Unmarshal(body, &e)
 	if err != nil {
 		return nil, err
 	}
-	return &envelope, nil
+	return e.ToPatient()
 }
 
 // NhsNumberRequest is used to populate the template to make the XML request
@@ -255,7 +290,7 @@ type Patient struct {
 }
 
 // ToPatient creates a "Patient" from the XML returned from the EMPI service
-func (e *Envelope) ToPatient() (*Patient, error) {
+func (e *envelope) ToPatient() (*Patient, error) {
 	pt := new(Patient)
 	pt.Lastname = e.surname()
 	pt.Firstnames = e.firstnames()
@@ -272,7 +307,7 @@ func (e *Envelope) ToPatient() (*Patient, error) {
 	return pt, nil
 }
 
-func (e *Envelope) surname() string {
+func (e *envelope) surname() string {
 	names := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID5
 	if len(names) > 0 {
 		return names[0].XPN1.FN1.Text
@@ -280,7 +315,7 @@ func (e *Envelope) surname() string {
 	return ""
 }
 
-func (e *Envelope) firstnames() string {
+func (e *envelope) firstnames() string {
 	names := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID5
 	if len(names) > 0 {
 		return names[0].XPN2.Text
@@ -288,7 +323,7 @@ func (e *Envelope) firstnames() string {
 	return ""
 }
 
-func (e *Envelope) title() string {
+func (e *envelope) title() string {
 	names := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID5
 	if len(names) > 0 {
 		return names[0].XPN5.Text
@@ -296,11 +331,11 @@ func (e *Envelope) title() string {
 	return ""
 }
 
-func (e *Envelope) sex() string {
+func (e *envelope) sex() string {
 	return e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID8.Text
 }
 
-func (e *Envelope) dateBirth() *time.Time {
+func (e *envelope) dateBirth() *time.Time {
 	dob := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID7.TS1.Text
 	if len(dob) > 0 {
 		d, err := parseDate(dob)
@@ -311,7 +346,7 @@ func (e *Envelope) dateBirth() *time.Time {
 	return nil
 }
 
-func (e *Envelope) dateDeath() *time.Time {
+func (e *envelope) dateDeath() *time.Time {
 	dod := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID29.TS1.Text
 	if len(dod) > 0 {
 		d, err := parseDate(dod)
@@ -322,15 +357,15 @@ func (e *Envelope) dateDeath() *time.Time {
 	return nil
 }
 
-func (e *Envelope) surgery() string {
+func (e *envelope) surgery() string {
 	return e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PD1.PD13.XON3.Text
 }
 
-func (e *Envelope) generalPractitioner() string {
+func (e *envelope) generalPractitioner() string {
 	return e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PD1.PD14.XCN1.Text
 }
 
-func (e *Envelope) identifiers() []Identifier {
+func (e *envelope) identifiers() []Identifier {
 	result := make([]Identifier, 0)
 	ids := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID3
 	for _, id := range ids {
@@ -346,7 +381,7 @@ func (e *Envelope) identifiers() []Identifier {
 	return result
 }
 
-func (e *Envelope) addresses() []Address {
+func (e *envelope) addresses() []Address {
 	result := make([]Address,  0)
 	addresses := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID11
 	for _, address := range addresses {
@@ -471,13 +506,13 @@ var nhsNumberRequestTemplate = `
 </soapenv:Envelope>
 `
 
-// Envelope is a struct generated by https://www.onlinetool.io/xmltogo/ from the XML returned from the server.
+// envelope is a struct generated by https://www.onlinetool.io/xmltogo/ from the XML returned from the server.
 // However, this doesn't take into account the possibility of repeating fields for certain PID entries.
 // See https://hl7-definition.caristix.com/v2/HL7v2.5.1/Segments/PID
 // which documents that the following can be repeated: PID3 PID4 PID5 PID6 PID9 PID10 PID11 PID13 PID14 PID21 PID22 PID26 PID32
 // Therefore, these have been manually added as []struct rather than struct.
 // Also, added PID.29 for date of death
-type Envelope struct {
+type envelope struct {
 	XMLName xml.Name `xml:"Envelope"`
 	Text    string   `xml:",chardata"`
 	Soap    string   `xml:"soap,attr"`
