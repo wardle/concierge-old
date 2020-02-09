@@ -178,8 +178,9 @@ func (a *App) getNhsNumber(w http.ResponseWriter, r *http.Request) {
 	var err error
 	if !found {
 		if !a.Fake {
-			ctx, _ := context.WithTimeout(context.Background(), time.Duration(a.TimeoutSeconds)*time.Second)
+			ctx, cancelFunc := context.WithTimeout(context.Background(), time.Duration(a.TimeoutSeconds)*time.Second)
 			pt, err = performRequest(ctx, endpointURLs[a.Endpoint], endpointCodes[a.Endpoint], nnn)
+			cancelFunc()
 		} else {
 			pt, err = performFake(nnn)
 		}
