@@ -98,14 +98,17 @@ type App struct {
 	Cache *cache.Cache	// may be nil if not caching
 }
 
-func (a *App) getCache(key string) (interface{}, bool) {
+func (a *App) getCache(key string) (*Patient, bool) {
 	if a.Cache == nil {
 		return nil, false
 	}
-	return a.Cache.Get(key)
+	if o, found := a.Cache.Get(key); found {
+		return o.(*Patient), true
+	}
+	return nil, false
 }
 
-func (a *App) setCache(key string, value interface{}) {
+func (a *App) setCache(key string, value *Patient) {
 	if a.Cache == nil {
 		return
 	}
@@ -133,6 +136,12 @@ func (a *App) getNhsNumber(w http.ResponseWriter, r *http.Request) {
 	} else {
 		log.Printf("serving request for %s from cache in %s", nnn, time.Since(start))
 	}	
+	if pt == nil {
+		log.Printf("patient with identifier %s not found", nnn)
+		http.NotFound(w, r)
+		return
+	}
+	log.Printf("result: %+v", pt)
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	if err := json.NewEncoder(w).Encode(pt); err != nil {
 		log.Printf("error: %s",err)
@@ -147,7 +156,7 @@ func performRequest(endpointURL string, nnn string) (*Envelope, error) {
 	}
 	req, err := http.NewRequest("POST", endpointURL, bytes.NewReader(data))
 	if err != nil {
-		panic(err)
+		log.Printf("error: %s", err)
 	}
 	req.Header.Set("Content-type", "text/xml; charset=\"utf-8\"")
 	req.Header.Set("SOAPAction", "http://apps.wales.nhs.uk/mpi/InvokePatientDemographicsQuery")
@@ -241,6 +250,9 @@ func (e *Envelope) ToPatient() (*Patient, error) {
 	pt := new(Patient)
 	pt.Lastname = e.surname()
 	pt.Firstnames = e.firstnames()
+	if pt.Lastname == "" && pt.Firstnames == "" {
+		return nil, nil
+	}
 	pt.Title = e.title()
 	pt.DateBirth = e.dateBirth()
 	pt.DateDeath = e.dateDeath()
