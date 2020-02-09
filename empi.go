@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"encoding/xml"
 	"flag"
@@ -33,16 +34,16 @@ const (
 
 var endpointURLs = [...]string{
 	"",
-	"",
+	"http://slowwly.robertomurray.co.uk/delay/5000/url/http://www.google.co.uk",
 	"https://mpitest.cymru.nhs.uk/PatientDemographicsQueryWS.asmx",
 	"http://ndc06srvmpidev2.cymru.nhs.uk:23000/PatientDemographicsQueryWS.asmx",
 }
 
 var endpointNames = [...]string{
-	"Unknown",
-	"Production",
-	"Testing",
-	"Development",
+	"unknown",
+	"production",
+	"testing",
+	"development",
 }
 
 var endpointCodes = [...]string{
@@ -70,8 +71,9 @@ var nnn = flag.String("nnn", "", "NHS number to fetch e.g. 7253698428, 770582073
 var logger = flag.String("log", "", "logfile to use")
 var serve = flag.Bool("serve", false, "whether to start a REST server")
 var port = flag.Int("port", 8080, "port to use")
-var cacheExpires = flag.Int("cache", 5, "cache expiration in minutes, 0=no cache")
+var cacheMinutes = flag.Int("cache", 5, "cache expiration in minutes, 0=no cache")
 var fake = flag.Bool("fake", false, "run a fake service")
+var timeoutSeconds = flag.Int("timeout", 2, "timeout in seconds for external services")
 
 // unset http_proxy
 // unset https_proxy
@@ -101,7 +103,8 @@ func main() {
 
 	// handle a command-line test with a specified NHS number
 	if *nnn != "" {
-		pt, err := performRequest(endpointURLs[ep], endpointCodes[ep], *nnn)
+		ctx := context.Background()
+		pt, err := performRequest(ctx, endpointURLs[ep], endpointCodes[ep], *nnn)
 		if err != nil {
 			panic(err)
 		}
@@ -127,22 +130,26 @@ func main() {
 		app.Endpoint = ep
 		app.Router = mux.NewRouter().StrictSlash(true)
 		app.Fake = *fake
-		if *cacheExpires != 0 {
-			app.Cache = cache.New(time.Duration(*cacheExpires)*time.Minute, time.Duration(*cacheExpires*2)*time.Minute)
+		app.TimeoutSeconds = *timeoutSeconds
+		if *cacheMinutes != 0 {
+			app.Cache = cache.New(time.Duration(*cacheMinutes)*time.Minute, time.Duration(*cacheMinutes*2)*time.Minute)
 		}
 		app.Router.HandleFunc("/users/{user}/nnn/{nnn}", app.getNhsNumber).Methods("GET")
-		log.Printf("starting REST server on port %d, cache: %d mins, endpoint: (%s) %s ", *port, *cacheExpires, endpointNames[ep], endpointURLs[ep])
+		log.Printf("starting REST server: port:%d cache:%dm timeout:%ds endpoint:(%s)%s ",
+			*port, *cacheMinutes, *timeoutSeconds, endpointNames[ep], endpointURLs[ep])
 		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), app.Router))
 		return
 	}
 	flag.PrintDefaults()
 }
 
+// App represents the application
 type App struct {
-	Endpoint Endpoint
-	Router   *mux.Router
-	Cache    *cache.Cache // may be nil if not caching
-	Fake     bool
+	Endpoint       Endpoint
+	Router         *mux.Router
+	Cache          *cache.Cache // may be nil if not caching
+	Fake           bool
+	TimeoutSeconds int
 }
 
 func (a *App) getCache(key string) (*Patient, bool) {
@@ -171,7 +178,8 @@ func (a *App) getNhsNumber(w http.ResponseWriter, r *http.Request) {
 	var err error
 	if !found {
 		if !a.Fake {
-			pt, err = performRequest(endpointURLs[a.Endpoint], endpointCodes[a.Endpoint], nnn)
+			ctx, _ := context.WithTimeout(context.Background(), time.Duration(a.TimeoutSeconds)*time.Second)
+			pt, err = performRequest(ctx, endpointURLs[a.Endpoint], endpointCodes[a.Endpoint], nnn)
 		} else {
 			pt, err = performFake(nnn)
 		}
@@ -204,6 +212,7 @@ func performFake(nnn string) (*Patient, error) {
 		Lastname:            "DUMMY",
 		Firstnames:          "ALBERT",
 		Title:               "DR",
+		Sex:                 "M",
 		DateBirth:           &dob,
 		Surgery:             "W95010",
 		GeneralPractitioner: "G9342400",
@@ -235,13 +244,13 @@ func performFake(nnn string) (*Patient, error) {
 	}, nil
 }
 
-func performRequest(endpointURL string, processingID string, nnn string) (*Patient, error) {
+func performRequest(context context.Context, endpointURL string, processingID string, nnn string) (*Patient, error) {
 	start := time.Now()
 	data, err := NewNhsNumberRequest(nnn, "221", "100", processingID)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest("POST", endpointURL, bytes.NewReader(data))
+	req, err := http.NewRequestWithContext(context, "POST", endpointURL, bytes.NewReader(data))
 	if err != nil {
 		return nil, err
 	}
