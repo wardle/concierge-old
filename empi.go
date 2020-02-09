@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/gorilla/mux"
+	"github.com/patrickmn/go-cache"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -29,6 +30,7 @@ var nnn = flag.String("nnn", "", "NHS number to fetch e.g. 7253698428, 770582073
 var logger = flag.String("log", "", "logfile to use")
 var serve = flag.Bool("serve", false, "whether to start a REST server")
 var port = flag.Int("port", 8080, "port to use")
+var cacheExpires = flag.Int("cache", 5, "cache expiration in minutes, 0=no cache")
 
 // unset http_proxy
 // unset https_proxy
@@ -72,42 +74,73 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		log.Printf("result for %s: %+v\n", *nnn, pt)
+		if err := json.NewEncoder(os.Stdout).Encode(pt); err != nil {
+			panic(err)
+		}
 	}
 
 	if *serve {
-		router := mux.NewRouter().StrictSlash(true)
-		router.HandleFunc("/users/{user}/nnn/{nnn}", getNhsNumber).Methods("GET")
-		log.Printf("starting REST server on port %d", *port)
-		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), router))
+		app := new(App)
+		app.EndpointURL = endpointURL
+		app.Router = mux.NewRouter().StrictSlash(true)
+		if *cacheExpires != 0 {
+			app.Cache = cache.New(time.Duration(*cacheExpires) * time.Minute, time.Duration(*cacheExpires * 2) * time.Minute)
+		}
+		app.Router.HandleFunc("/users/{user}/nnn/{nnn}", app.getNhsNumber).Methods("GET")
+		log.Printf("starting REST server on port %d, cache: %d mins", *port, *cacheExpires)
+		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), app.Router))
 	}
 }
 
+type App struct {
+	EndpointURL string
+	Router *mux.Router
+	Cache *cache.Cache	// may be nil if not caching
+}
 
+func (a *App) getCache(key string) (interface{}, bool) {
+	if a.Cache == nil {
+		return nil, false
+	}
+	return a.Cache.Get(key)
+}
 
+func (a *App) setCache(key string, value interface{}) {
+	if a.Cache == nil {
+		return
+	}
+	a.Cache.Set(key, value, cache.DefaultExpiration)
+}
 
-func getNhsNumber(w http.ResponseWriter, r *http.Request) {
+func (a *App) getNhsNumber(w http.ResponseWriter, r *http.Request) {
 	user := mux.Vars(r)["user"]
 	nnn := mux.Vars(r)["nnn"]
 	log.Printf("request by user: '%s' for nnn: '%s': %+v", user, nnn, r)
-	envelope, err := performRequest(devEndpointURL, nnn)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	pt, err := envelope.ToPatient()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	start := time.Now()
+	pt, found := a.getCache(nnn)
+	if !found {
+		envelope, err := performRequest(a.EndpointURL, nnn)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		pt, err = envelope.ToPatient()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		a.setCache(nnn, pt)
+	} else {
+		log.Printf("serving request for %s from cache in %s", nnn, time.Since(start))
+	}	
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	if err := json.NewEncoder(w).Encode(pt); err != nil {
-		panic(err)
+		log.Printf("error: %s",err)
 	}
-
 }
 
 func performRequest(endpointURL string, nnn string) (*Envelope, error) {
+	start := time.Now()
 	data, err := NewNhsNumberRequest(nnn, "221", "100")
 	if err != nil {
 		return nil, err
@@ -129,7 +162,7 @@ func performRequest(endpointURL string, nnn string) (*Envelope, error) {
 	}
 	defer resp.Body.Close()
 	var envelope Envelope
-	log.Printf("response: %v",string(body))
+	log.Printf("response (%s): %v",time.Since(start), string(body))
 	err = xml.Unmarshal(body, &envelope)
 	if err != nil {
 		return nil, err
@@ -175,32 +208,32 @@ func NewNhsNumberRequest(nnn string, sender string, receiver string) ([]byte, er
 
 // Identifier represents an organisation's identifier for this patient
 type Identifier struct {
-	Authority string
-	ID        string
+	Authority string `json:"authority"`
+	ID        string `json:"identifier"`
 }
 
 // Address represents an address for this patient
 type Address struct {
-	Address1 string
-	Address2 string
-	Address3 string
-	Address4 string
-	Postcode string
-	DateFrom time.Time		// valid from
-	DateTo time.Time			// valid to
+	Address1 string	`json:"address1"`
+	Address2 string `json:"address2"`
+	Address3 string `json:"address3"`
+	Address4 string `json:"address4"`
+	Postcode string `json:"postcode"`
+	DateFrom *time.Time	`json:"dateFrom"`	// valid from
+	DateTo *time.Time	`json:"dateTo"`		// valid to
 }
 
 // Patient is a patient
 type Patient struct {
-	Lastname    string
-	Firstnames  string
-	Title       string
-	DateBirth   time.Time
-	DateDeath   time.Time
-	Surgery		string
-	GeneralPractitioner string
-	Identifiers []Identifier
-	Addresses   []Address
+	Lastname    string `json:"lastName"`
+	Firstnames  string `json:"firstNames"`
+	Title       string `json:"title"`
+	DateBirth   *time.Time `json:"dateBirth"`
+	DateDeath   *time.Time `json:"dateDeath"`
+	Surgery		string `json:"surgery"`
+	GeneralPractitioner string `json:"generalPractitioner"`
+	Identifiers []Identifier `json:"identifiers"`
+	Addresses   []Address `json:"addresses"`
 }
 
 // ToPatient creates a "Patient" from the XML returned from the EMPI service
@@ -246,7 +279,7 @@ func (e *Envelope) sex() string {
 	return e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID8.Text
 }
 
-func (e *Envelope) dateBirth() time.Time {
+func (e *Envelope) dateBirth() *time.Time {
 	dob := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID7.TS1.Text
 	if len(dob) > 0 {
 		d, err := parseDate(dob)
@@ -254,10 +287,10 @@ func (e *Envelope) dateBirth() time.Time {
 			return d
 		}
 	}
-	return time.Time{}
+	return nil
 }
 
-func (e *Envelope) dateDeath() time.Time {
+func (e *Envelope) dateDeath() *time.Time {
 	dod := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID29.TS1.Text
 	if len(dod) > 0 {
 		d, err := parseDate(dod)
@@ -265,7 +298,7 @@ func (e *Envelope) dateDeath() time.Time {
 			return d
 		}
 	}
-	return time.Time{}
+	return nil
 }
 
 func (e *Envelope) surgery() string {
@@ -311,12 +344,16 @@ func (e *Envelope) addresses() []Address {
 	return result
 }
 
-func parseDate(d string) (time.Time, error) {
+func parseDate(d string) (*time.Time, error) {
 	layout := "20060102" // reference date is : Mon Jan 2 15:04:05 MST 2006
 	if len(d) > 8 {
 		d = d[:8]
 	}
-	return time.Parse(layout, d)
+	t, err := time.Parse(layout, d)
+	if err != nil || t.IsZero() {
+		return nil, err
+	}
+	return &t, nil
 }
 
 var nhsNumberRequestTemplate = `
