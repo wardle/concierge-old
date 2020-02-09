@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"encoding/xml"
 	"flag"
-	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"text/template"
@@ -24,25 +24,27 @@ var serverLive = flag.Bool("live", false, "use live server (?)")
 var nnn = flag.String("nnn", "", "NHS number to fetch e.g. 7253698428, 7705820730, 6145933267")
 
 // unset http_proxy
+// unset https_proxy
 func main() {
-	httpProxy, exists := os.LookupEnv("http_proxy")
+	httpProxy, exists := os.LookupEnv("http_proxy")		// give warning if proxy set, as we don't need a proxy
 	if exists {
-		fmt.Printf("warning: http proxy set to %s\n", httpProxy)
+		log.Printf("warning: http proxy set to %s\n", httpProxy)
 	}
 	httpsProxy, exists := os.LookupEnv("https_proxy")
 	if exists {
-		fmt.Printf("warning: https proxy set to %s\n", httpsProxy)
+		log.Printf("warning: https proxy set to %s\n", httpsProxy)
 	}
 	flag.Parse()
 	var endpointURL string
 	if *serverDev {
 		endpointURL = devEndpointURL
-	} else if *serverTest {
+	} 
+	if *serverTest {
 		endpointURL = testEndpointURL
-	} else if *serverLive {
+	} 
+	if *serverLive {
 		endpointURL = liveEndpointURL
 	}
-	fmt.Printf("using endpoint: %s\n", endpointURL)
 
 	// handle a command-line test with a specified NHS number
 	if *nnn != "" {
@@ -50,13 +52,11 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		fmt.Printf("result for nnn: %s:", *nnn)
-		fmt.Printf("surname: %s\n", envelope.GetSurname())
-		fmt.Printf("first names: %s\n", envelope.GetFirstnames())
-		fmt.Printf("title: %s\n", envelope.GetTitle())
-		fmt.Printf(" sex: %s\n", envelope.GetSex())
-		fmt.Printf(" dob: %s\n", envelope.GetDateBirth())
-		fmt.Printf(" dod: %v\n", envelope.GetDateDeath())
+		pt, err := envelope.ToPatient()
+		if err != nil {
+			panic(err)
+		}
+		log.Printf("result for %s: %+v\n", *nnn, pt)
 	}
 }
 
@@ -82,6 +82,7 @@ func performRequest(endpointURL string, nnn string) (*Envelope, error) {
 	}
 	defer resp.Body.Close()
 	var envelope Envelope
+	log.Printf("response: %v",string(body))
 	err = xml.Unmarshal(body, &envelope)
 	if err != nil {
 		return nil, err
@@ -117,8 +118,12 @@ func NewNhsNumberRequest(nnn string, sender string, receiver string) ([]byte, er
 	if err != nil {
 		return nil, err
 	}
+	log.Printf("created request: %+v", data)
 	var buf bytes.Buffer
-	return buf.Bytes(), t.Execute(&buf, data)
+	if err := t.Execute(&buf, data); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 // Identifier represents an organisation's identifier for this patient
@@ -134,6 +139,8 @@ type Address struct {
 	Address3 string
 	Address4 string
 	Postcode string
+	DateFrom time.Time		// valid from
+	DateTo time.Time			// valid to
 }
 
 // Patient is a patient
@@ -143,6 +150,8 @@ type Patient struct {
 	Title       string
 	DateBirth   time.Time
 	DateDeath   time.Time
+	Surgery		string
+	GeneralPractitioner string
 	Identifiers []Identifier
 	Addresses   []Address
 }
@@ -150,16 +159,19 @@ type Patient struct {
 // ToPatient creates a "Patient" from the XML returned from the EMPI service
 func (e *Envelope) ToPatient() (*Patient, error) {
 	pt := new(Patient)
-	pt.Lastname = e.GetSurname()
-	pt.Firstnames = e.GetFirstnames()
-	pt.Title = e.GetTitle()
-	pt.DateBirth = e.GetDateBirth()
-	pt.DateDeath = e.GetDateDeath()
-	pt.Identifiers = e.GetIdentifiers()
+	pt.Lastname = e.surname()
+	pt.Firstnames = e.firstnames()
+	pt.Title = e.title()
+	pt.DateBirth = e.dateBirth()
+	pt.DateDeath = e.dateDeath()
+	pt.Identifiers = e.identifiers()
+	pt.Addresses = e.addresses()
+	pt.Surgery = e.surgery()
+	pt.GeneralPractitioner = e.generalPractitioner()
 	return pt, nil
 }
 
-func (e *Envelope) GetSurname() string {
+func (e *Envelope) surname() string {
 	names := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID5
 	if len(names) > 0 {
 		return names[0].XPN1.FN1.Text
@@ -167,7 +179,7 @@ func (e *Envelope) GetSurname() string {
 	return ""
 }
 
-func (e *Envelope) GetFirstnames() string {
+func (e *Envelope) firstnames() string {
 	names := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID5
 	if len(names) > 0 {
 		return names[0].XPN2.Text
@@ -175,7 +187,7 @@ func (e *Envelope) GetFirstnames() string {
 	return ""
 }
 
-func (e *Envelope) GetTitle() string {
+func (e *Envelope) title() string {
 	names := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID5
 	if len(names) > 0 {
 		return names[0].XPN5.Text
@@ -183,11 +195,11 @@ func (e *Envelope) GetTitle() string {
 	return ""
 }
 
-func (e *Envelope) GetSex() string {
+func (e *Envelope) sex() string {
 	return e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID8.Text
 }
 
-func (e *Envelope) GetDateBirth() time.Time {
+func (e *Envelope) dateBirth() time.Time {
 	dob := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID7.TS1.Text
 	if len(dob) > 0 {
 		d, err := parseDate(dob)
@@ -198,7 +210,7 @@ func (e *Envelope) GetDateBirth() time.Time {
 	return time.Time{}
 }
 
-func (e *Envelope) GetDateDeath() time.Time {
+func (e *Envelope) dateDeath() time.Time {
 	dod := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID29.TS1.Text
 	if len(dod) > 0 {
 		d, err := parseDate(dod)
@@ -209,16 +221,15 @@ func (e *Envelope) GetDateDeath() time.Time {
 	return time.Time{}
 }
 
-func (e *Envelope) GetSurgery() string {
+func (e *Envelope) surgery() string {
 	return e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PD1.PD13.XON3.Text
 }
 
-func (e *Envelope) GetGeneralPractitioner() string {
+func (e *Envelope) generalPractitioner() string {
 	return e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PD1.PD14.XCN1.Text
 }
 
-// GetIdentifiers parses the PID.3 response and returns a map of authority identifiers to
-func (e *Envelope) GetIdentifiers() []Identifier {
+func (e *Envelope) identifiers() []Identifier {
 	result := make([]Identifier, 0)
 	ids := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID3
 	for _, id := range ids {
@@ -230,6 +241,25 @@ func (e *Envelope) GetIdentifiers() []Identifier {
 				ID:        identifier,
 			})
 		}
+	}
+	return result
+}
+
+func (e *Envelope) addresses() []Address {
+	result := make([]Address,  0)
+	addresses := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID11
+	for _, address := range addresses {
+		dateFrom, _ := parseDate(address.XAD13.Text)
+		dateTo, _ := parseDate(address.XAD14.Text)
+		result = append(result, Address{
+			Address1: address.XAD1.SAD1.Text,
+			Address2: address.XAD2.Text,
+			Address3: address.XAD3.Text,
+			Address4: address.XAD4.Text,
+			Postcode: address.XAD5.Text,
+			DateFrom: dateFrom,
+			DateTo: dateTo,
+		})
 	}
 	return result
 }
@@ -717,6 +747,18 @@ type Envelope struct {
 								Table    string `xml:"Table,attr"`
 								LongName string `xml:"LongName,attr"`
 							} `xml:"XAD.7"`
+							XAD13 struct {
+								Text     string `xml:",chardata"`
+								Type     string `xml:"Type,attr"`
+								Table    string `xml:"Table,attr"`
+								LongName string `xml:"LongName,attr"`
+							} `xml:"XAD.13"`
+							XAD14 struct {
+								Text     string `xml:",chardata"`
+								Type     string `xml:"Type,attr"`
+								Table    string `xml:"Table,attr"`
+								LongName string `xml:"LongName,attr"`
+							} `xml:"XAD.14"`
 						} `xml:"PID.11"`
 						PID13 []struct {
 							Text     string `xml:",chardata"`
