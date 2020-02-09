@@ -347,6 +347,7 @@ type Patient struct {
 	EmailAddresses      []string     `json:"emailAddresses"`
 }
 
+// Telephone is a telephone number and its description
 type Telephone struct {
 	Number      string `json:"telephone"`
 	Description string `json:"description"`
