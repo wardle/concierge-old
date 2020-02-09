@@ -13,21 +13,57 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"text/template"
 	"time"
 )
 
 
+type Endpoint int
+
 const (
-	devEndpointURL  = "http://ndc06srvmpidev2.cymru.nhs.uk:23000/PatientDemographicsQueryWS.asmx"
-	testEndpointURL = "https://mpitest.cymru.nhs.uk/PatientDemographicsQueryWS.asmx"
-	liveEndpointURL = ""
+	UnknownEndpoint Endpoint = iota 		// unknown
+	ProductionEndpoint			 			// production server
+	TestingEndpoint							// user acceptance testing
+	DevelopmentEndpoint						// development
 )
 
-var serverTest = flag.Bool("test", false, "use test server (https://mpitest.cymru.nhs.uk/PatientDemographicsQueryWS.asmx)")
-var serverDev = flag.Bool("dev", true, "use dev server (http://ndc06srvmpidev2.cymru.nhs.uk:23000/PatientDemographicsQueryWS.asmx)")
-var serverLive = flag.Bool("live", false, "use live server (?)")
+var endpointURLs = [...]string {
+	"",
+	"",
+	"https://mpitest.cymru.nhs.uk/PatientDemographicsQueryWS.asmx",
+	"http://ndc06srvmpidev2.cymru.nhs.uk:23000/PatientDemographicsQueryWS.asmx",
+}
+
+var endpointNames = [...]string {
+	"Unknown",
+	"Production",
+	"Testing",
+	"Development",
+}
+
+var endpointCodes = [...]string {
+	"",
+	"P",
+	"U",
+	"T",
+}
+
+func lookupEndpoint(s string) Endpoint {
+	s2 := strings.ToUpper(s)
+	switch {
+	case strings.HasPrefix(s2, "P"):
+		return ProductionEndpoint
+	case strings.HasPrefix(s2, "T"):
+		return TestingEndpoint
+	case strings.HasPrefix(s2, "D"):
+		return DevelopmentEndpoint
+	}
+	return UnknownEndpoint
+}
+
+var endpoint = flag.String("endpoint", "D", "(P)roduction, (T)esting or (D)evelopment")
 var nnn = flag.String("nnn", "", "NHS number to fetch e.g. 7253698428, 7705820730, 6145933267")
 var logger = flag.String("log", "", "logfile to use")
 var serve = flag.Bool("serve", false, "whether to start a REST server")
@@ -56,20 +92,14 @@ func main() {
 	if exists {
 		log.Printf("warning: https proxy set to %s\n", httpsProxy)
 	}
-	var endpointURL string
-	if *serverDev {
-		endpointURL = devEndpointURL
-	} 
-	if *serverTest {
-		endpointURL = testEndpointURL
-	} 
-	if *serverLive {
-		endpointURL = liveEndpointURL
+	ep := lookupEndpoint(*endpoint)
+	if endpointURLs[ep] == ""  {
+		log.Fatalf("unknown or unsupported endpoint: %s", *endpoint)
 	}
 
 	// handle a command-line test with a specified NHS number
 	if *nnn != "" {
-		pt, err := performRequest(endpointURL, *nnn)
+		pt, err := performRequest(endpointURLs[ep], endpointCodes[ep], *nnn)
 		if err != nil {
 			panic(err)
 		}
@@ -92,14 +122,14 @@ func main() {
 			os.Exit(1)
 		}()
 		app := new(App)
-		app.EndpointURL = endpointURL
+		app.Endpoint = ep
 		app.Router = mux.NewRouter().StrictSlash(true)
 		app.Fake = *fake
 		if *cacheExpires != 0 {
 			app.Cache = cache.New(time.Duration(*cacheExpires) * time.Minute, time.Duration(*cacheExpires * 2) * time.Minute)
 		}
 		app.Router.HandleFunc("/users/{user}/nnn/{nnn}", app.getNhsNumber).Methods("GET")
-		log.Printf("starting REST server on port %d, cache: %d mins", *port, *cacheExpires)
+		log.Printf("starting REST server on port %d, cache: %d mins, endpoint: (%s) %s ", *port, *cacheExpires, endpointNames[ep], endpointURLs[ep])
 		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), app.Router))
 		return
 	}
@@ -107,7 +137,7 @@ func main() {
 }
 
 type App struct {
-	EndpointURL string
+	Endpoint Endpoint
 	Router *mux.Router
 	Cache *cache.Cache	// may be nil if not caching
 	Fake bool
@@ -139,7 +169,7 @@ func (a *App) getNhsNumber(w http.ResponseWriter, r *http.Request) {
 	var err error
 	if !found {
 		if !a.Fake {
-			pt, err = performRequest(a.EndpointURL, nnn)
+			pt, err = performRequest(endpointURLs[a.Endpoint], endpointCodes[a.Endpoint], nnn)
 		} else {
 			pt, err = performFake(nnn)
 		}
@@ -191,12 +221,19 @@ func performFake(nnn string) (*Patient, error) {
 				Postcode: "CF31 2PJ",
 			},
 		},
+		Telephones: []Telephone{
+			Telephone{
+				Number: "02920747747",
+				Description: "Work number",
+			},
+		},
+		EmailAddresses: []string{"test@test.com"},
 	}, nil
 }
 
-func performRequest(endpointURL string, nnn string) (*Patient, error) {
+func performRequest(endpointURL string, processingID string, nnn string) (*Patient, error) {
 	start := time.Now()
-	data, err := NewNhsNumberRequest(nnn, "221", "100")
+	data, err := NewNhsNumberRequest(nnn, "221", "100", processingID)
 	if err != nil {
 		return nil, err
 	}
@@ -233,12 +270,13 @@ type NhsNumberRequest struct {
 	ReceivingApplication string
 	ReceivingFacility    string
 	DateTime             string
+	ProcessingID		 string			//for MSH.11 - P/U/T production/testing/development
 }
 
 // NewNhsNumberRequest returns a correctly formatted XML request to search by NHS number
 // sender : 221 (PatientCare)
 // receiver: 100 (NHS Wales EMPI)
-func NewNhsNumberRequest(nnn string, sender string, receiver string) ([]byte, error) {
+func NewNhsNumberRequest(nnn string, sender string, receiver string, processingID string) ([]byte, error) {
 	layout := "20060102150405" // YYYYMMDDHHMMSS
 	now := time.Now().Format(layout)
 	data := NhsNumberRequest{
@@ -248,6 +286,7 @@ func NewNhsNumberRequest(nnn string, sender string, receiver string) ([]byte, er
 		ReceivingApplication: receiver,
 		ReceivingFacility:    receiver,
 		DateTime:             now,
+		ProcessingID:	      processingID,
 	}
 	t, err := template.New("nhs-number-request").Parse(nhsNumberRequestTemplate)
 	if err != nil {
@@ -413,23 +452,40 @@ func (e *envelope) addresses() []Address {
 
 func (e *envelope) telephones() []Telephone {
 	result := make([]Telephone,0)
-	telephones := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID13
-	for _, telephone := range telephones {
+	pid13 := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID13
+	for _, telephone := range pid13 {
 		num := telephone.XTN1.Text 
 		if num != "" {
-		result = append(result, Telephone{
-			Number: num,
-			Description: telephone.LongName,
-		})
+			result = append(result, Telephone{
+				Number: num,
+				Description: telephone.LongName,
+			})
+		}
 	}
+	pid14 := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID14
+	for _, telephone := range pid14 {
+		num := telephone.XTN1.Text 
+		if num != "" {
+			result = append(result, Telephone{
+				Number: num,
+				Description: telephone.LongName,
+			})
+		}
 	}
 	return result
 }
 
 func (e *envelope) emailAddresses() []string {
 	result := make([]string,0)
-	telephones := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID13
-	for _, telephone := range telephones {
+	pid13 := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID13
+	for _, telephone := range pid13 {
+		email := telephone.XTN4.Text 
+		if email != "" {
+			result = append(result, email)
+		}
+	}
+	pid14 := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID14
+	for _, telephone := range pid14 {
 		email := telephone.XTN4.Text 
 		if email != "" {
 			result = append(result, email)
@@ -493,7 +549,7 @@ var nhsNumberRequestTemplate = `
 			<!-- Message Control ID -->
 			<MSH.10>PDQ Message</MSH.10>
 			<MSH.11>
-			   <PT.1 >P</PT.1>
+			   <PT.1 >{{.ProcessingID}}</PT.1>
 			</MSH.11>
 			<!-- Version Id -->
 			<MSH.12>
@@ -977,6 +1033,11 @@ type envelope struct {
 								Table    string `xml:"Table,attr"`
 								LongName string `xml:"LongName,attr"`
 							} `xml:"XTN.2"`
+							XTN4 struct {
+								Text     string `xml:",chardata"`
+								Type     string `xml:"Type,attr"`
+								LongName string `xml:"LongName,attr"`
+							} `xml:"XTN.4"`
 						} `xml:"PID.14"`
 						PID15 struct {
 							Text     string `xml:",chardata"`
