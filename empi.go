@@ -12,6 +12,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"text/template"
 	"time"
 )
@@ -79,6 +81,13 @@ func main() {
 		}
 	}
 
+	sigs := make(chan os.Signal, 1)		// channel to receive OS signals
+	signal.Notify(sigs, os.Interrupt, os.Kill, syscall.SIGTERM)
+	go func() {
+		s := <- sigs
+		log.Printf("RECEIVED SIGNAL: %s", s)
+		os.Exit(1)
+	}()
 	if *serve {
 		app := new(App)
 		app.EndpointURL = endpointURL
