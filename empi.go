@@ -134,7 +134,7 @@ func main() {
 		if *cacheMinutes != 0 {
 			app.Cache = cache.New(time.Duration(*cacheMinutes)*time.Minute, time.Duration(*cacheMinutes*2)*time.Minute)
 		}
-		app.Router.HandleFunc("/users/{user}/nnn/{nnn}", app.getNhsNumber).Methods("GET")
+		app.Router.HandleFunc("/empi/{nnn}", app.getNhsNumber).Methods("GET")
 		log.Printf("starting REST server: port:%d cache:%dm timeout:%ds endpoint:(%s)%s",
 			*port, *cacheMinutes, *timeoutSeconds, endpointNames[ep], endpointURLs[ep])
 		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), app.Router))
@@ -170,9 +170,20 @@ func (a *App) setCache(key string, value *Patient) {
 }
 
 func (a *App) getNhsNumber(w http.ResponseWriter, r *http.Request) {
-	user := mux.Vars(r)["user"]
 	nnn := mux.Vars(r)["nnn"]
+	query := r.URL.Query()
+	user := query.Get("user")
 	log.Printf("request by user: '%s' for nnn: '%s': %+v", user, nnn, r)
+	if user == "" {
+		log.Printf("bad request: invalid user")
+		http.Error(w, "invalid user", http.StatusBadRequest)
+		return
+	}
+	if nnn == "" || len(nnn) != 10 {
+		log.Printf("bad request: invalid NHS number")
+		http.Error(w, "invalid nhs number", http.StatusBadRequest)
+		return
+	}
 	start := time.Now()
 	pt, found := a.getCache(nnn)
 	var err error
