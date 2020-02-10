@@ -395,10 +395,13 @@ func (e *envelope) surname() string {
 
 func (e *envelope) firstnames() string {
 	names := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID5
+	var sb strings.Builder
 	if len(names) > 0 {
-		return names[0].XPN2.Text
+		sb.WriteString(names[0].XPN2.Text) // given name - XPN.2
+		sb.WriteString(" ")
+		sb.WriteString(names[0].XPN3.Text) // second or further given names - XPN.3
 	}
-	return ""
+	return strings.TrimSpace(sb.String())
 }
 
 func (e *envelope) title() string {
@@ -926,6 +929,11 @@ type envelope struct {
 								Type     string `xml:"Type,attr"`
 								LongName string `xml:"LongName,attr"`
 							} `xml:"XPN.2"`
+							XPN3 struct {
+								Text     string `xml:",chardata"`
+								Type     string `xml:"Type,attr"`
+								LongName string `xml:"LongName,attr"`
+							} `xml:"XPN.3"`
 							XPN5 struct {
 								Text     string `xml:",chardata"`
 								Type     string `xml:"Type,attr"`
