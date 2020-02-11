@@ -7,9 +7,11 @@ import (
 	"encoding/xml"
 	"flag"
 	"fmt"
+	"github.com/google/uuid"
 	"io/ioutil"
 	"log"
 	"net/http"
+	
 	"net/url"
 	"os"
 	"os/signal"
@@ -203,13 +205,14 @@ func (a *App) getIdentifier(w http.ResponseWriter, r *http.Request) {
 	if lookupAuthority(authority) == AuthorityUnknown {
 		log.Printf("bad request: unknown authority: %s", authority)
 		http.Error(w, "invalid authority", http.StatusBadRequest)
+		return
 	}
-	a.writeIdentifier(w, r, authorityCodes[AuthorityNHS], identifier, user)
+	a.writeIdentifier(w, r, authority, identifier, user)
 }
 
 func (a *App) writeIdentifier(w http.ResponseWriter, r *http.Request, authority string, identifier string, username string) {
 	start := time.Now()
-	key := authority + identifier
+	key := authority + "/" + identifier
 	pt, found := a.getCache(key)
 	var err error
 	if !found {
@@ -328,6 +331,7 @@ type IdentifierRequest struct {
 	ReceivingApplication string
 	ReceivingFacility    string
 	DateTime             string
+	MessageControlID	 string //for MSH.10 -  a UUID
 	ProcessingID         string //for MSH.11 - P/U/T production/testing/development
 }
 
@@ -346,6 +350,7 @@ func NewIdentifierRequest(identifier string, authority Authority, sender string,
 		ReceivingApplication: receiver,
 		ReceivingFacility:    receiver,
 		DateTime:             now,
+		MessageControlID:	  uuid.New().String(),
 		ProcessingID:         processingID,
 	}
 	t, err := template.New("identifier-request").Parse(identifierRequestTemplate)
@@ -669,7 +674,7 @@ var identifierRequestTemplate = `
 			   <MSG.3 >QBP_Q21</MSG.3>
 			</MSH.9>
 			<!-- Message Control ID -->
-			<MSH.10>PDQ Message</MSH.10>
+			<MSH.10>{{.MessageControlID}}</MSH.10>
 			<MSH.11>
 			   <PT.1 >{{.ProcessingID}}</PT.1>
 			</MSH.11>
