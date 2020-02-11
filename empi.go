@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -195,11 +196,15 @@ func (a *App) getIdentifier(w http.ResponseWriter, r *http.Request) {
 	user := query.Get("user")
 	log.Printf("request by user:%s for authority:%s id:%s: %+v", user, authority, identifier, r)
 	if user == "" {
-		log.Printf("bad request: invalid user")
+		log.Print("bad request: invalid user")
 		http.Error(w, "invalid user", http.StatusBadRequest)
 		return
 	}
-	a.writeIdentifier(w, r, authority, identifier, user)
+	if lookupAuthority(authority) == AuthorityUnknown {
+		log.Printf("bad request: unknown authority: %s", authority)
+		http.Error(w, "invalid authority", http.StatusBadRequest)
+	}
+	a.writeIdentifier(w, r, authorityCodes[AuthorityNHS], identifier, user)
 }
 
 func (a *App) writeIdentifier(w http.ResponseWriter, r *http.Request, authority string, identifier string, username string) {
@@ -217,6 +222,12 @@ func (a *App) writeIdentifier(w http.ResponseWriter, r *http.Request, authority 
 		}
 		if err != nil {
 			log.Printf("error: %s", err)
+			if urlError, ok := err.(*url.Error); ok {
+				if urlError.Timeout() {
+					http.Error(w, err.Error(), http.StatusRequestTimeout)
+					return
+				}
+			}
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
