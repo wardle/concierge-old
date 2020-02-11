@@ -104,7 +104,7 @@ func main() {
 	// handle a command-line test with a specified NHS number
 	if *nnn != "" {
 		ctx := context.Background()
-		pt, err := performRequest(ctx, endpointURLs[ep], endpointCodes[ep], *nnn)
+		pt, err := performRequest(ctx, endpointURLs[ep], endpointCodes[ep], AuthorityNHS, *nnn)
 		if err != nil {
 			panic(err)
 		}
@@ -134,7 +134,8 @@ func main() {
 		if *cacheMinutes != 0 {
 			app.Cache = cache.New(time.Duration(*cacheMinutes)*time.Minute, time.Duration(*cacheMinutes*2)*time.Minute)
 		}
-		app.Router.HandleFunc("/empi/{nnn}", app.getNhsNumber).Methods("GET")
+		app.Router.HandleFunc("/nhsnumber/{nnn}", app.getNhsNumber).Methods("GET")
+		app.Router.HandleFunc("/authority/{authorityID}/{identifier}", app.getIdentifier).Methods("GET")
 		log.Printf("starting REST server: port:%d cache:%dm timeout:%ds endpoint:(%s)%s",
 			*port, *cacheMinutes, *timeoutSeconds, endpointNames[ep], endpointURLs[ep])
 		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), app.Router))
@@ -184,28 +185,47 @@ func (a *App) getNhsNumber(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid nhs number", http.StatusBadRequest)
 		return
 	}
+	a.writeIdentifier(w, r, authorityCodes[AuthorityNHS], nnn, user)
+}
+
+func (a *App) getIdentifier(w http.ResponseWriter, r *http.Request) {
+	authority := mux.Vars(r)["authority"]
+	identifier := mux.Vars(r)["identifier"]
+	query := r.URL.Query()
+	user := query.Get("user")
+	log.Printf("request by user:%s for authority:%s id:%s: %+v", user, authority, identifier, r)
+	if user == "" {
+		log.Printf("bad request: invalid user")
+		http.Error(w, "invalid user", http.StatusBadRequest)
+		return
+	}
+	a.writeIdentifier(w, r, authorityCodes[AuthorityNHS], identifier, user)
+}
+
+func (a *App) writeIdentifier(w http.ResponseWriter, r *http.Request, authority string, identifier string, username string) {
 	start := time.Now()
-	pt, found := a.getCache(nnn)
+	key := authority + identifier
+	pt, found := a.getCache(key)
 	var err error
 	if !found {
 		if !a.Fake {
 			ctx, cancelFunc := context.WithTimeout(context.Background(), time.Duration(a.TimeoutSeconds)*time.Second)
-			pt, err = performRequest(ctx, endpointURLs[a.Endpoint], endpointCodes[a.Endpoint], nnn)
+			pt, err = performRequest(ctx, endpointURLs[a.Endpoint], endpointCodes[a.Endpoint], lookupAuthority(authority), identifier)
 			cancelFunc()
 		} else {
-			pt, err = performFake(nnn)
+			pt, err = performFake(lookupAuthority(authority), identifier)
 		}
 		if err != nil {
 			log.Printf("error: %s", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		a.setCache(nnn, pt)
+		a.setCache(key, pt)
 	} else {
-		log.Printf("serving request for %s from cache in %s", nnn, time.Since(start))
+		log.Printf("serving request for %s/%s from cache in %s", authority, identifier, time.Since(start))
 	}
 	if pt == nil {
-		log.Printf("patient with identifier %s not found", nnn)
+		log.Printf("patient with identifier %s/%s not found", authority, identifier)
 		http.NotFound(w, r)
 		return
 	}
@@ -217,7 +237,7 @@ func (a *App) getNhsNumber(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func performFake(nnn string) (*Patient, error) {
+func performFake(authority Authority, identifier string) (*Patient, error) {
 	dob := time.Date(1960, 01, 01, 00, 00, 00, 0, time.UTC)
 
 	return &Patient{
@@ -230,8 +250,8 @@ func performFake(nnn string) (*Patient, error) {
 		GeneralPractitioner: "G9342400",
 		Identifiers: []Identifier{
 			Identifier{
-				Authority: "NHS",
-				ID:        nnn,
+				Authority: authorityCodes[authority],
+				ID:        identifier,
 			},
 			Identifier{
 				Authority: "103",
@@ -256,9 +276,9 @@ func performFake(nnn string) (*Patient, error) {
 	}, nil
 }
 
-func performRequest(context context.Context, endpointURL string, processingID string, nnn string) (*Patient, error) {
+func performRequest(context context.Context, endpointURL string, processingID string, authority Authority, identifier string) (*Patient, error) {
 	start := time.Now()
-	data, err := NewNhsNumberRequest(nnn, "221", "100", processingID)
+	data, err := NewIdentifierRequest(identifier, authority, "221", "100", processingID)
 	if err != nil {
 		return nil, err
 	}
@@ -287,9 +307,11 @@ func performRequest(context context.Context, endpointURL string, processingID st
 	return e.ToPatient()
 }
 
-// NhsNumberRequest is used to populate the template to make the XML request
-type NhsNumberRequest struct {
-	NhsNumber            string
+// IdentifierRequest is used to populate the template to make the XML request
+type IdentifierRequest struct {
+	Identifier           string
+	Authority            string
+	AuthorityType        string
 	SendingApplication   string
 	SendingFacility      string
 	ReceivingApplication string
@@ -298,14 +320,16 @@ type NhsNumberRequest struct {
 	ProcessingID         string //for MSH.11 - P/U/T production/testing/development
 }
 
-// NewNhsNumberRequest returns a correctly formatted XML request to search by NHS number
+// NewIdentifierRequest returns a correctly formatted XML request to search by an identifier, such as NHS number
 // sender : 221 (PatientCare)
 // receiver: 100 (NHS Wales EMPI)
-func NewNhsNumberRequest(nnn string, sender string, receiver string, processingID string) ([]byte, error) {
+func NewIdentifierRequest(identifier string, authority Authority, sender string, receiver string, processingID string) ([]byte, error) {
 	layout := "20060102150405" // YYYYMMDDHHMMSS
 	now := time.Now().Format(layout)
-	data := NhsNumberRequest{
-		NhsNumber:            nnn,
+	data := IdentifierRequest{
+		Identifier:           identifier,
+		Authority:            authorityCodes[authority],
+		AuthorityType:        authorityTypes[authority],
 		SendingApplication:   sender,
 		SendingFacility:      sender,
 		ReceivingApplication: receiver,
@@ -313,7 +337,7 @@ func NewNhsNumberRequest(nnn string, sender string, receiver string, processingI
 		DateTime:             now,
 		ProcessingID:         processingID,
 	}
-	t, err := template.New("nhs-number-request").Parse(nhsNumberRequestTemplate)
+	t, err := template.New("identifier-request").Parse(identifierRequestTemplate)
 	if err != nil {
 		return nil, err
 	}
@@ -323,6 +347,63 @@ func NewNhsNumberRequest(nnn string, sender string, receiver string, processingI
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// Authority represents the different authorities that issue identifiers
+type Authority int
+
+// List of authority codes for different organisations in Wales
+const (
+	AuthorityUnknown = iota
+	AuthorityNHS
+	AuthorityEMPI
+	AuthorityABH
+	AuthorityABMU
+	AuthorityBCUCentral
+	AuthorityBCUMaelor
+	AuthorityBCUWest
+	AuthorityCT
+	AuthorityCV
+	AuthorityHD
+	AuthorityPowys
+)
+
+var authorityCodes = [...]string{
+	"",
+	"NHS", // NHS number
+	"100", // internal EMPI identifier - ephemeral identifier
+	"139", // AB
+	"108", // ABM
+	"109", //BCUCentral
+	"110", //BCUMaelor
+	"111", //BCUWest
+	"126", //CT
+	"140", //CAV
+	"149", //HD
+	"170", //Powys
+}
+var authorityTypes = [...]string{
+	"",
+	"NH",
+	"PE", // unknown - TODO: check this
+	"PI",
+	"PI",
+	"PI",
+	"PI",
+	"PI",
+	"PI",
+	"PI",
+	"PI",
+	"PI",
+}
+
+func lookupAuthority(authority string) Authority {
+	for i, a := range authorityCodes {
+		if a == authority {
+			return Authority(i)
+		}
+	}
+	return AuthorityUnknown
 }
 
 // Identifier represents an organisation's identifier for this patient
@@ -537,7 +618,7 @@ func parseDate(d string) (*time.Time, error) {
 	return &t, nil
 }
 
-var nhsNumberRequestTemplate = `
+var identifierRequestTemplate = `
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:mpi="http://apps.wales.nhs.uk/mpi/" xmlns="urn:hl7-org:v2xml">
 <soapenv:Header/>
 <soapenv:Body>
@@ -601,17 +682,17 @@ var nhsNumberRequestTemplate = `
 			<QPD.3>
 			   <!--PID.3 - Patient Identifier List:-->
 			   <QIP.1>@PID.3.1</QIP.1>
-			   <QIP.2>{{.NhsNumber}}</QIP.2>
+			   <QIP.2>{{.Identifier}}</QIP.2>
 			</QPD.3>
 			<QPD.3>
 			   <!--PID.3 - Patient Identifier List:-->
 			   <QIP.1>@PID.3.4</QIP.1>
-			   <QIP.2>NHS</QIP.2>
+			   <QIP.2>{{.Authority}}</QIP.2>
 			</QPD.3>
 			<QPD.3>
 			   <!--PID.3 - Patient Identifier List:-->
 			   <QIP.1>@PID.3.5</QIP.1>
-			   <QIP.2>NH</QIP.2>
+			   <QIP.2>{{.AuthorityType}}</QIP.2>
 			</QPD.3>
 		 </QPD>
 
