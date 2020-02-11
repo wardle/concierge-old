@@ -135,7 +135,7 @@ func main() {
 			app.Cache = cache.New(time.Duration(*cacheMinutes)*time.Minute, time.Duration(*cacheMinutes*2)*time.Minute)
 		}
 		app.Router.HandleFunc("/nhsnumber/{nnn}", app.getNhsNumber).Methods("GET")
-		app.Router.HandleFunc("/authority/{authorityID}/{identifier}", app.getIdentifier).Methods("GET")
+		app.Router.HandleFunc("/authority/{authorityCode}/{identifier}", app.getIdentifier).Methods("GET")
 		log.Printf("starting REST server: port:%d cache:%dm timeout:%ds endpoint:(%s)%s",
 			*port, *cacheMinutes, *timeoutSeconds, endpointNames[ep], endpointURLs[ep])
 		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), app.Router))
@@ -189,7 +189,7 @@ func (a *App) getNhsNumber(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) getIdentifier(w http.ResponseWriter, r *http.Request) {
-	authority := mux.Vars(r)["authority"]
+	authority := mux.Vars(r)["authorityCode"]
 	identifier := mux.Vars(r)["identifier"]
 	query := r.URL.Query()
 	user := query.Get("user")
@@ -199,7 +199,7 @@ func (a *App) getIdentifier(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid user", http.StatusBadRequest)
 		return
 	}
-	a.writeIdentifier(w, r, authorityCodes[AuthorityNHS], identifier, user)
+	a.writeIdentifier(w, r, authority, identifier, user)
 }
 
 func (a *App) writeIdentifier(w http.ResponseWriter, r *http.Request, authority string, identifier string, username string) {
