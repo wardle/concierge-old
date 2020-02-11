@@ -7,11 +7,12 @@ import (
 	"encoding/xml"
 	"flag"
 	"fmt"
-	"github.com/google/uuid"
 	"io/ioutil"
 	"log"
 	"net/http"
-	
+
+	"github.com/google/uuid"
+
 	"net/url"
 	"os"
 	"os/signal"
@@ -70,7 +71,8 @@ func lookupEndpoint(s string) Endpoint {
 }
 
 var endpoint = flag.String("endpoint", "D", "(P)roduction, (T)esting or (D)evelopment")
-var nnn = flag.String("nnn", "", "NHS number to fetch e.g. 7253698428, 7705820730, 6145933267")
+var authority = flag.String("authority", "NHS", "Authority, such as NHS, 140 (CAV) etc")
+var identifier = flag.String("id", "", "identifier to fetch e.g. 7253698428, 7705820730, 6145933267")
 var logger = flag.String("log", "", "logfile to use")
 var serve = flag.Bool("serve", false, "whether to start a REST server")
 var port = flag.Int("port", 8080, "port to use")
@@ -104,19 +106,23 @@ func main() {
 		log.Fatalf("error: unknown or unsupported endpoint: %s", *endpoint)
 	}
 
-	// handle a command-line test with a specified NHS number
-	if *nnn != "" {
+	// handle a command-line test with a specified identifier
+	if *identifier != "" {
 		ctx := context.Background()
-		pt, err := performRequest(ctx, endpointURLs[ep], endpointCodes[ep], AuthorityNHS, *nnn)
+		auth := lookupAuthority(*authority)
+		if auth == AuthorityUnknown {
+			log.Fatalf("unsupported authority: %s", *authority)
+		}
+		pt, err := performRequest(ctx, endpointURLs[ep], endpointCodes[ep], auth, *identifier)
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 		if pt == nil {
 			log.Printf("Not Found")
 			return
 		}
 		if err := json.NewEncoder(os.Stdout).Encode(pt); err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 		return
 	}
@@ -331,7 +337,7 @@ type IdentifierRequest struct {
 	ReceivingApplication string
 	ReceivingFacility    string
 	DateTime             string
-	MessageControlID	 string //for MSH.10 -  a UUID
+	MessageControlID     string //for MSH.10 -  a UUID
 	ProcessingID         string //for MSH.11 - P/U/T production/testing/development
 }
 
@@ -350,7 +356,7 @@ func NewIdentifierRequest(identifier string, authority Authority, sender string,
 		ReceivingApplication: receiver,
 		ReceivingFacility:    receiver,
 		DateTime:             now,
-		MessageControlID:	  uuid.New().String(),
+		MessageControlID:     uuid.New().String(),
 		ProcessingID:         processingID,
 	}
 	t, err := template.New("identifier-request").Parse(identifierRequestTemplate)
