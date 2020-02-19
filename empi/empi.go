@@ -1,4 +1,4 @@
-package main
+package empi
 
 import (
 	"bytes"
@@ -38,7 +38,7 @@ const (
 
 var endpointURLs = [...]string{
 	"",
-	"",
+	"https://mpilive.wales.nhs.uk/PatientDemographicsQueryWS.asmx",
 	"https://mpitest.cymru.nhs.uk/PatientDemographicsQueryWS.asmx",
 	"http://ndc06srvmpidev2.cymru.nhs.uk:23000/PatientDemographicsQueryWS.asmx",
 }
@@ -57,7 +57,8 @@ var endpointCodes = [...]string{
 	"T",
 }
 
-func lookupEndpoint(s string) Endpoint {
+// LookupEndpoint returns an endpoint for (P)roduction, (T)esting or (D)evelopment
+func LookupEndpoint(s string) Endpoint {
 	s2 := strings.ToUpper(s)
 	switch {
 	case strings.HasPrefix(s2, "P"):
@@ -68,6 +69,21 @@ func lookupEndpoint(s string) Endpoint {
 		return DevelopmentEndpoint
 	}
 	return UnknownEndpoint
+}
+
+// URL returns the default URL of this endpoint
+func (ep Endpoint) URL() string {
+	return endpointURLs[ep]
+}
+
+// ProcessingID returns the processing ID for this endpoint
+func (ep Endpoint) ProcessingID() string {
+	return endpointCodes[ep]
+}
+
+// Name returns the name of this endpoint
+func (ep Endpoint) Name() string {
+	return endpointNames[ep]
 }
 
 var endpoint = flag.String("endpoint", "D", "(P)roduction, (T)esting or (D)evelopment")
@@ -82,18 +98,17 @@ var timeoutSeconds = flag.Int("timeout", 2, "timeout in seconds for external ser
 
 // unset http_proxy
 // unset https_proxy
-func main() {
+func main2() {
 	flag.Parse()
 	if *logger != "" {
 		f, err := os.OpenFile(*logger, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
 		if err != nil {
-			fmt.Printf("fatal error. couldn't open log file ('%s'): %s", *logger, err)
-			os.Exit(1)
+			log.Fatalf("fatal error: couldn't open log file ('%s'): %s", *logger, err)
 		}
 		log.SetOutput(f)
 		log.SetFlags(log.LstdFlags | log.Lshortfile)
 	}
-	httpProxy, exists := os.LookupEnv("http_proxy") // give warning if proxy set, as we don't need a proxy
+	httpProxy, exists := os.LookupEnv("http_proxy") // give warning if proxy set, to help debug connection errors in live
 	if exists {
 		log.Printf("warning: http proxy set to %s\n", httpProxy)
 	}
@@ -101,7 +116,7 @@ func main() {
 	if exists {
 		log.Printf("warning: https proxy set to %s\n", httpsProxy)
 	}
-	ep := lookupEndpoint(*endpoint)
+	ep := LookupEndpoint(*endpoint)
 	if endpointURLs[ep] == "" {
 		log.Fatalf("error: unknown or unsupported endpoint: %s", *endpoint)
 	}
@@ -109,7 +124,7 @@ func main() {
 	// handle a command-line test with a specified identifier
 	if *identifier != "" {
 		ctx := context.Background()
-		auth := lookupAuthority(*authority)
+		auth := LookupAuthority(*authority)
 		if auth == AuthorityUnknown {
 			log.Fatalf("unsupported authority: %s", *authority)
 		}
@@ -128,7 +143,7 @@ func main() {
 	}
 
 	if *serve {
-		sigs := make(chan os.Signal, 1) // channel to receive OS signals
+		sigs := make(chan os.Signal, 1) // channel to receive OS termination/kill/interrupt signal
 		signal.Notify(sigs, os.Interrupt, os.Kill, syscall.SIGTERM)
 		go func() {
 			s := <-sigs
@@ -143,14 +158,34 @@ func main() {
 		if *cacheMinutes != 0 {
 			app.Cache = cache.New(time.Duration(*cacheMinutes)*time.Minute, time.Duration(*cacheMinutes*2)*time.Minute)
 		}
-		app.Router.HandleFunc("/nhsnumber/{nnn}", app.getNhsNumber).Methods("GET")
-		app.Router.HandleFunc("/authority/{authorityCode}/{identifier}", app.getIdentifier).Methods("GET")
+		app.Router.HandleFunc("/nhsnumber/{nnn}", app.GetByNhsNumber).Methods("GET")
+		app.Router.HandleFunc("/authority/{authorityCode}/{identifier}", app.GetByIdentifier).Methods("GET")
 		log.Printf("starting REST server: port:%d cache:%dm timeout:%ds endpoint:(%s)%s",
 			*port, *cacheMinutes, *timeoutSeconds, endpointNames[ep], endpointURLs[ep])
 		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), app.Router))
 		return
 	}
 	flag.PrintDefaults()
+}
+
+// Invoke invokes a simple request on the endpoint for the specified authority and identifier
+func Invoke(endpointURL string, processingID string, authority string, identifier string) {
+	ctx := context.Background()
+	auth := LookupAuthority(authority)
+	if auth == AuthorityUnknown {
+		log.Fatalf("unsupported authority: %s", authority)
+	}
+	pt, err := performRequest(ctx, endpointURL, processingID, auth, identifier)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if pt == nil {
+		log.Printf("Not Found")
+		return
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(pt); err != nil {
+		log.Fatal(err)
+	}
 }
 
 // App represents the application
@@ -179,7 +214,7 @@ func (a *App) setCache(key string, value *Patient) {
 	a.Cache.Set(key, value, cache.DefaultExpiration)
 }
 
-func (a *App) getNhsNumber(w http.ResponseWriter, r *http.Request) {
+func (a *App) GetByNhsNumber(w http.ResponseWriter, r *http.Request) {
 	nnn := mux.Vars(r)["nnn"]
 	query := r.URL.Query()
 	user := query.Get("user")
@@ -197,7 +232,7 @@ func (a *App) getNhsNumber(w http.ResponseWriter, r *http.Request) {
 	a.writeIdentifier(w, r, authorityCodes[AuthorityNHS], nnn, user)
 }
 
-func (a *App) getIdentifier(w http.ResponseWriter, r *http.Request) {
+func (a *App) GetByIdentifier(w http.ResponseWriter, r *http.Request) {
 	authority := mux.Vars(r)["authorityCode"]
 	identifier := mux.Vars(r)["identifier"]
 	query := r.URL.Query()
@@ -208,7 +243,7 @@ func (a *App) getIdentifier(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid user", http.StatusBadRequest)
 		return
 	}
-	if lookupAuthority(authority) == AuthorityUnknown {
+	if LookupAuthority(authority) == AuthorityUnknown {
 		log.Printf("bad request: unknown authority: %s", authority)
 		http.Error(w, "invalid authority", http.StatusBadRequest)
 		return
@@ -224,10 +259,10 @@ func (a *App) writeIdentifier(w http.ResponseWriter, r *http.Request, authority 
 	if !found {
 		if !a.Fake {
 			ctx, cancelFunc := context.WithTimeout(context.Background(), time.Duration(a.TimeoutSeconds)*time.Second)
-			pt, err = performRequest(ctx, endpointURLs[a.Endpoint], endpointCodes[a.Endpoint], lookupAuthority(authority), identifier)
+			pt, err = performRequest(ctx, endpointURLs[a.Endpoint], endpointCodes[a.Endpoint], LookupAuthority(authority), identifier)
 			cancelFunc()
 		} else {
-			pt, err = performFake(lookupAuthority(authority), identifier)
+			pt, err = performFake(LookupAuthority(authority), identifier)
 		}
 		if err != nil {
 			log.Printf("error: %s", err)
@@ -264,35 +299,46 @@ func performFake(authority Authority, identifier string) (*Patient, error) {
 		Lastname:            "DUMMY",
 		Firstnames:          "ALBERT",
 		Title:               "DR",
-		Sex:                 "M",
-		DateBirth:           &dob,
+		Gender:              "M",
+		BirthDate:           &dob,
 		Surgery:             "W95010",
 		GeneralPractitioner: "G9342400",
 		Identifiers: []Identifier{
 			Identifier{
-				Authority: authorityCodes[authority],
-				ID:        identifier,
+				System: authorityCodes[authority],
+				Value:  identifier,
 			},
 			Identifier{
-				Authority: "103",
-				ID:        "M1147907",
+				System: "103",
+				Value:  "M1147907",
 			},
 		},
 		Addresses: []Address{
 			Address{
-				Address1: "59 Robins Hill",
-				Address2: "Brackla",
-				Address3: "BRIDGEND",
-				Postcode: "CF31 2PJ",
+				Text:       "59 Robins Hill\nBrackla\nBRIDGEND\nCF31 2PJ\nWALES",
+				Line:       "59 Robins Hill",
+				City:       "Brackla",
+				District:   "BRIDGEND",
+				PostalCode: "CF31 2PJ",
+				Country:    "WALES",
 			},
 		},
-		Telephones: []Telephone{
-			Telephone{
-				Number:      "02920747747",
+		Telecom: []ContactPoint{
+			ContactPoint{
+				System:      "phone",
+				Value:       "02920747747",
+				Use:         "work",
+				Rank:        1,
 				Description: "Work number",
 			},
+			ContactPoint{
+				System:      "email",
+				Value:       "test@test.com",
+				Use:         "work",
+				Rank:        1,
+				Description: "Work email",
+			},
 		},
-		EmailAddresses: []string{"test@test.com"},
 	}, nil
 }
 
@@ -419,7 +465,8 @@ var authorityTypes = [...]string{
 	"PI",
 }
 
-func lookupAuthority(authority string) Authority {
+// LookupAuthority looks up an authority via a code
+func LookupAuthority(authority string) Authority {
 	for i, a := range authorityCodes {
 		if a == authority {
 			return Authority(i)
@@ -428,43 +475,82 @@ func lookupAuthority(authority string) Authority {
 	return AuthorityUnknown
 }
 
+// Coding is a reference to a code in a coding system
+type Coding struct {
+	System       string `json:"system"`
+	Version      string `json:"version"`
+	Code         string `json:"code"`
+	Display      string `json:"display"`
+	UserSelected bool   `json:"userSelected"`
+}
+
+// CodeableConcept reflects one or more specific codes from a code system
+type CodeableConcept struct {
+	Coding []Coding `json:"coding"`
+	Text   string   `json:"text"`
+}
+
+// Period reflects a time period
+type Period struct {
+	Start *time.Time `json:"start"`
+	End   *time.Time `json:"end"`
+}
+
+// Reference allows one resource to reference another
+type Reference struct {
+	Reference  string     `json:"reference"`  // Literal reference, absolute or relative URL
+	Type       string     `json:"type"`       // Type reference refers to, eg. Patient, Organization
+	Identifier Identifier `json:"identifier"` // Logical reference when literal reference not known
+	Display    string     `json:"display"`    // Text alternative for the resource
+}
+
 // Identifier represents an organisation's identifier for this patient
 type Identifier struct {
-	Authority string `json:"authority"`
-	ID        string `json:"identifier"`
+	Use      string           `json:"use,omitempty"` // usual / official / temp / secondary / old  (if known)
+	Type     *CodeableConcept `json:"type"`
+	System   string           `json:"system"` // uri
+	Value    string           `json:"value"`
+	Period   *Period          `json:"period,omitempty"`
+	Assigner *Reference       `json:"assigner"`
 }
 
 // Address represents an address for this patient
 type Address struct {
-	Address1 string     `json:"address1"`
-	Address2 string     `json:"address2"`
-	Address3 string     `json:"address3"`
-	Address4 string     `json:"address4"`
-	Postcode string     `json:"postcode"`
-	DateFrom *time.Time `json:"dateFrom"` // valid from
-	DateTo   *time.Time `json:"dateTo"`   // valid to
+	Use        string  `json:"use,omitempty"`
+	Type       string  `json:"type,omitempty"`
+	Text       string  `json:"text"`
+	Line       string  `json:"line"`
+	City       string  `json:"city"`
+	District   string  `json:"district"`
+	State      string  `json:"state"`
+	PostalCode string  `json:"postalCode"`
+	Country    string  `json:"country"`
+	Period     *Period `json:"period"`
 }
 
 // Patient is a patient
 type Patient struct {
-	Lastname            string       `json:"lastName"`
-	Firstnames          string       `json:"firstNames"`
-	Title               string       `json:"title"`
-	Sex                 string       `json:"sex"`
-	DateBirth           *time.Time   `json:"dateBirth"`
-	DateDeath           *time.Time   `json:"dateDeath"`
-	Surgery             string       `json:"surgery"`
-	GeneralPractitioner string       `json:"generalPractitioner"`
-	Identifiers         []Identifier `json:"identifiers"`
-	Addresses           []Address    `json:"addresses"`
-	Telephones          []Telephone  `json:"telephones"`
-	EmailAddresses      []string     `json:"emailAddresses"`
+	Lastname            string         `json:"lastName"`
+	Firstnames          string         `json:"firstNames"`
+	Title               string         `json:"title"`
+	Gender              string         `json:"gender"`
+	BirthDate           *time.Time     `json:"dateBirth"`
+	DeathDate           *time.Time     `json:"dateDeath"`
+	Surgery             string         `json:"surgery"`
+	GeneralPractitioner string         `json:"generalPractitioner"`
+	Identifiers         []Identifier   `json:"identifiers"`
+	Addresses           []Address      `json:"addresses"`
+	Telecom             []ContactPoint `json:"telecom"`
 }
 
-// Telephone is a telephone number and its description
-type Telephone struct {
-	Number      string `json:"telephone"`
-	Description string `json:"description"`
+// ContactPoint is a technology-mediated contact point for a person or organization, including telephone, email,
+type ContactPoint struct {
+	System      string  `json:"system"` // phone | fax | email | pager | url | sms | other
+	Value       string  `json:"value"`
+	Use         string  `json:"use"` // home | work | temp | old | mobile - purpose of this contact point
+	Rank        int     `json:"rank"`
+	Period      *Period `json:"period,omitempty"`
+	Description string  `json:"description"` // not standard - textual description
 }
 
 // ToPatient creates a "Patient" from the XML returned from the EMPI service
@@ -476,15 +562,14 @@ func (e *envelope) ToPatient() (*Patient, error) {
 		return nil, nil
 	}
 	pt.Title = e.title()
-	pt.Sex = e.sex()
-	pt.DateBirth = e.dateBirth()
-	pt.DateDeath = e.dateDeath()
+	pt.Gender = e.gender()
+	pt.BirthDate = e.dateBirth()
+	pt.DeathDate = e.dateDeath()
 	pt.Identifiers = e.identifiers()
 	pt.Addresses = e.addresses()
 	pt.Surgery = e.surgery()
 	pt.GeneralPractitioner = e.generalPractitioner()
-	pt.Telephones = e.telephones()
-	pt.EmailAddresses = e.emailAddresses()
+	pt.Telecom = e.telecom()
 	return pt, nil
 }
 
@@ -515,7 +600,7 @@ func (e *envelope) title() string {
 	return ""
 }
 
-func (e *envelope) sex() string {
+func (e *envelope) gender() string {
 	return e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID8.Text
 }
 
@@ -557,8 +642,13 @@ func (e *envelope) identifiers() []Identifier {
 		identifier := id.CX1.Text
 		if authority != "" && identifier != "" {
 			result = append(result, Identifier{
-				Authority: authority,
-				ID:        identifier,
+				Use:    "official",
+				System: authority,
+				Assigner: &Reference{
+					Reference: authority,
+					Display:   authority, // todo: change to human readable name
+				},
+				Value: identifier,
 			})
 		}
 	}
@@ -572,27 +662,37 @@ func (e *envelope) addresses() []Address {
 		dateFrom, _ := parseDate(address.XAD13.Text)
 		dateTo, _ := parseDate(address.XAD14.Text)
 		result = append(result, Address{
-			Address1: address.XAD1.SAD1.Text,
-			Address2: address.XAD2.Text,
-			Address3: address.XAD3.Text,
-			Address4: address.XAD4.Text,
-			Postcode: address.XAD5.Text,
-			DateFrom: dateFrom,
-			DateTo:   dateTo,
+			Line:       address.XAD1.SAD1.Text,
+			City:       address.XAD2.Text,
+			District:   address.XAD3.Text,
+			Country:    address.XAD4.Text,
+			PostalCode: address.XAD5.Text,
+			Period: &Period{
+				Start: dateFrom,
+				End:   dateTo,
+			},
 		})
 	}
 	return result
 }
 
-func (e *envelope) telephones() []Telephone {
-	result := make([]Telephone, 0)
+func (e *envelope) telecom() []ContactPoint {
+	result := make([]ContactPoint, 0)
 	pid13 := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID13
 	for _, telephone := range pid13 {
 		num := telephone.XTN1.Text
 		if num != "" {
-			result = append(result, Telephone{
-				Number:      num,
+			result = append(result, ContactPoint{
+				System:      "phone",
+				Value:       num,
 				Description: telephone.LongName,
+			})
+		}
+		email := telephone.XTN4.Text
+		if email != "" {
+			result = append(result, ContactPoint{
+				System: "email",
+				Value:  email,
 			})
 		}
 	}
@@ -600,29 +700,18 @@ func (e *envelope) telephones() []Telephone {
 	for _, telephone := range pid14 {
 		num := telephone.XTN1.Text
 		if num != "" {
-			result = append(result, Telephone{
-				Number:      num,
+			result = append(result, ContactPoint{
+				System:      "phone",
+				Value:       num,
 				Description: telephone.LongName,
 			})
 		}
-	}
-	return result
-}
-
-func (e *envelope) emailAddresses() []string {
-	result := make([]string, 0)
-	pid13 := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID13
-	for _, telephone := range pid13 {
 		email := telephone.XTN4.Text
 		if email != "" {
-			result = append(result, email)
-		}
-	}
-	pid14 := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID14
-	for _, telephone := range pid14 {
-		email := telephone.XTN4.Text
-		if email != "" {
-			result = append(result, email)
+			result = append(result, ContactPoint{
+				System: "email",
+				Value:  email,
+			})
 		}
 	}
 	return result
