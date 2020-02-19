@@ -38,7 +38,7 @@ const (
 
 var endpointURLs = [...]string{
 	"",
-	"https://mpilive.wales.nhs.uk/PatientDemographicsQueryWS.asmx",
+	"https://mpilive.cymru.nhs.uk/PatientDemographicsQueryWS.asmx",
 	"https://mpitest.cymru.nhs.uk/PatientDemographicsQueryWS.asmx",
 	"http://ndc06srvmpidev2.cymru.nhs.uk:23000/PatientDemographicsQueryWS.asmx",
 }
