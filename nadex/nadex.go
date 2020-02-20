@@ -17,8 +17,8 @@ dns_lookup_realm = false
 dns_lookup_kdc = false
 ticket_lifetime = 24h
 forwardable = yes
-default_tkt_enctypes = aes256-cts-hmac-sha1-96
-default_tgs_enctypes = aes256-cts-hmac-sha1-96
+default_tkt_enctypes = aes256-cts rc4-hmac
+default_tgs_enctypes = aes256-cts rc4-hmac
  
 [realms]
 CYMRU.NHS.UK = {
@@ -51,7 +51,7 @@ func Experiments(username string, password string) {
 		Server:   "cymru.nhs.uk",
 		Port:     389,
 		BaseDN:   "OU=Users,DC=cymru,DC=nhs,DC=uk",
-		Security: auth.SecurityStartTLS,
+		Security: auth.SecurityNone,
 	}
 
 	status, err := auth.Authenticate(config, username, password)
@@ -80,6 +80,8 @@ func Experiments(username string, password string) {
 	if !success {
 		panic("invalid credentials")
 	}
+
+	// search for a user
 	searchRequest := ldap.NewSearchRequest(
 		"dc=cymru,dc=nhs,dc=uk", // The base dn to search
 		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
