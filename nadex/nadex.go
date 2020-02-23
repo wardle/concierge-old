@@ -31,6 +31,7 @@ nhs.uk = CYMRU.NHS.UK
 `
 )
 
+// Experiments perform tests/experiments against the NHS Wales active directory, using credentials supplied
 func Experiments(username string, password string) {
 
 	// first, let's try kerberos
@@ -46,7 +47,8 @@ func Experiments(username string, password string) {
 	} else {
 		log.Printf("Kerberos success!\n")
 	}
-	// now let's use LDAP instead
+
+	// now let's use LDAP authentication and lookup instead
 	config := &auth.Config{
 		Server:   "cymru.nhs.uk",
 		Port:     389,
@@ -59,34 +61,35 @@ func Experiments(username string, password string) {
 		panic(err)
 	}
 	if status {
-		fmt.Printf("LDAP login success!")
+		log.Printf("LDAP login success!")
 	} else {
-		fmt.Printf("failed login")
+		log.Fatalf("failed login")
 	}
 
 	conn, err := config.Connect()
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	defer conn.Conn.Close()
 	upn, err := config.UPN(username)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	success, err := conn.Bind(upn, password)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	if !success {
-		panic("invalid credentials")
+		log.Fatal("invalid credentials")
 	}
 
 	// search for a user
+	searchUser := "ma090906" // for testing
 	searchRequest := ldap.NewSearchRequest(
 		"dc=cymru,dc=nhs,dc=uk", // The base dn to search
 		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-		"(&(objectClass=User)(sAMAccountName=ma090906))", // The filter to apply
-		[]string{"sn", "givenName", "mail", "title"},     // A list attributes to retrieve
+		fmt.Sprintf("(&(objectClass=User)(sAMAccountName=%s))", searchUser), // The filter to apply
+		[]string{"sn", "givenName", "mail", "title"},                        // A list attributes to retrieve
 		nil,
 	)
 
@@ -100,6 +103,6 @@ func Experiments(username string, password string) {
 		surname := entry.GetAttributeValue("sn")
 		email := entry.GetAttributeValue("mail")
 		jobTitle := entry.GetAttributeValue("title")
-		fmt.Printf("%s:\n firstnames:%v lastname:%v email:%v job title:%v\n", entry.DN, givenNames, surname, email, jobTitle)
+		log.Printf("%s:\n firstnames:%v lastname:%v email:%v job title:%v\n", entry.DN, givenNames, surname, email, jobTitle)
 	}
 }
