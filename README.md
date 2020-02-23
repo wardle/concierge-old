@@ -64,6 +64,29 @@ Future integrations that will be needed will be:
 * Welsh Results Reporting Services (WRRS) - although currently permission has not been available to access this service
 * Welsh Demographics Service (WDS) - which includes lookup via the NHS England Spine for NHS number tracing
 
+You can think of concierge as a "socket adaptor" making it possible to plug-in your clinical application into a local ecosystem. Concierge will abstract those integrations into a cohesive set of APIs.
+
+Initially, each "module" will provide a proprietary API that has a more-or-less direct mapping with the underlying implementation, but concierge will then provide a more unified API that abstracts multiple implementations, if they exist.
+
+
+# Build instructions
+
+1. Install bazel, if not already installed
+
+e.g. on Mac OS X,
+
+        brew install bazel
+
+2. Run bazel build:
+
+        bazel build concierge
+        bazel build --platforms=@io_bazel_rules_go//go/toolchain:linux_amd64 concierge
+        bazel build --platforms=@io_bazel_rules_go//go/toolchain:windows_amd64 concierge
+
+
+To update bazel BUILD files using gazelle.
+
+    bazel run //:gazelle -- update-repos -from_file=go.mod
 
 # Module documentation
 
