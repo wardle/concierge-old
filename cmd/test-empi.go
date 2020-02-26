@@ -24,7 +24,6 @@ import (
 	"log"
 
 	"github.com/spf13/cobra"
-	protos "github.com/wardle/concierge-api/v1"
 	"github.com/wardle/concierge/empi"
 )
 
@@ -47,9 +46,6 @@ concierge test empi 7253698428`,
 	Short: "Test a query against the NHS Wales' EMPI",
 	Long:  `Test a query against the NHS Wales' EMPI`,
 	Run: func(cmd *cobra.Command, args []string) {
-		pt := protos.Patient{}
-		pt.Lastname = "Wardle"
-		log.Printf("patient: %+v", pt)
 		authority := "NHS"
 		var identifier string
 		switch len(args) {
