@@ -19,5 +19,7 @@ go_library(
         "@com_github_patrickmn_go_cache//:go_default_library",
         "@com_github_spf13_cobra//:go_default_library",
         "@com_github_spf13_viper//:go_default_library",
+        "@com_github_wardle_concierge-api//v1:go_default_library",
+
     ],
 )

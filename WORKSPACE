@@ -1,5 +1,23 @@
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
+# protobuf support using rules_proto
+http_archive(
+    name = "rules_proto",
+    sha256 = "602e7161d9195e50246177e7c55b2f39950a9cf7366f74ed5f22fd45750cd208",
+    strip_prefix = "rules_proto-97d8af4dc474595af3900dd85cb3a29ad28cc313",
+    urls = [
+        "https://mirror.bazel.build/github.com/bazelbuild/rules_proto/archive/97d8af4dc474595af3900dd85cb3a29ad28cc313.tar.gz",
+        "https://github.com/bazelbuild/rules_proto/archive/97d8af4dc474595af3900dd85cb3a29ad28cc313.tar.gz",
+    ],
+)
+
+load("@rules_proto//proto:repositories.bzl", "rules_proto_dependencies", "rules_proto_toolchains")
+
+rules_proto_dependencies()
+
+rules_proto_toolchains()
+
+# golang support
 http_archive(
     name = "io_bazel_rules_go",
     urls = [
@@ -15,6 +33,9 @@ go_rules_dependencies()
 
 go_register_toolchains()
 
+# gazelle support - generate dependencies from go.mod
+# e.g. go mod tidy
+#      gazelle update-repos -from_file go.mod -prune   # prune will remove unused dependencies
 http_archive(
     name = "bazel_gazelle",
     urls = [
@@ -28,6 +49,43 @@ load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies", "go_repository")
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 
 gazelle_dependencies()
+
+#
+# protobuf
+# 
+git_repository(
+    name = "com_google_protobuf",
+    commit = "88579a44fb8e6283d7e55117233abf6bd10b3cb0",
+    remote = "https://github.com/protocolbuffers/protobuf",
+)
+
+load("@com_google_protobuf//:protobuf_deps.bzl", "protobuf_deps")
+protobuf_deps()
+
+
+
+
+#
+# include protobuf / gRPC definitions
+#
+git_repository(
+    name = "com_github_wardle_concierge-api",
+    remote = "https://github.com/wardle/concierge-api",
+    commit = "03c706211890b907694cd964d3aef8cf9a98697d",
+)
+
+
+#
+# and now golang repositories:
+#
+
+go_repository(
+    name = "org_golang_google_grpc",
+    build_file_proto_mode = "disable",
+    importpath = "google.golang.org/grpc",
+    sum = "h1:J0UbZOIrCAl+fpTOf8YLs4dJo8L/owV4LYVtAXQoPkw=",
+    version = "v1.22.0",
+)
 
 go_repository(
     name = "co_honnef_go_tools",
