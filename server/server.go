@@ -14,7 +14,9 @@ import (
 
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	health "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/status"
 )
 
 // Server represents a combined gRPC and REST server
@@ -84,11 +86,14 @@ func headerMatcher(headerName string) (mdName string, ok bool) {
 // Check is a health check, implementing the grpc-health service
 // see https://godoc.org/google.golang.org/grpc/health/grpc_health_v1#HealthServer
 func (sv *Server) Check(ctx context.Context, r *health.HealthCheckRequest) (*health.HealthCheckResponse, error) {
+	log.Printf("service health check received: %+v", r)
 	response := new(health.HealthCheckResponse)
 	response.Status = health.HealthCheckResponse_SERVING
 	return response, nil
 }
 
+// Watch is a streaming health check to issue changes in health status
 func (sv *Server) Watch(r *health.HealthCheckRequest, w health.Health_WatchServer) error {
-	return nil
+	log.Printf("service health watch request received: %+v", r)
+	return status.Error(codes.Unimplemented, "grpc health watch operation not implemented")
 }

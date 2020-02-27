@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/xml"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -12,6 +13,8 @@ import (
 	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/google/uuid"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"net/url"
 	"os"
@@ -147,7 +150,7 @@ func (app *App) GetRawEMPIRequest(ctx context.Context, req *apiv1.RawCymruEmpiRe
 	}
 	if pt == nil {
 		log.Printf("Patient %s/%s not found", req.Authority, req.Identifier)
-		return nil, nil
+		return nil, status.Error(codes.NotFound, fmt.Sprintf("patient %s/%s not found", req.Authority, req.Identifier))
 	}
 	return pt, nil
 }
