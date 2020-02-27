@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/xml"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -119,6 +118,24 @@ type App struct {
 
 var _ apiv1.WalesEMPIServer = (*App)(nil)
 
+// GetEMPIRequest fetches a patient using an identifier code, with authority optional and defaulting to NHS number
+func (app *App) GetEMPIRequest(ctx context.Context, req *apiv1.CymruEmpiRequest) (*apiv1.Patient, error) {
+	if req.Authority == apiv1.CymruEmpiRequest_UNKNOWN {
+		req.Authority = apiv1.CymruEmpiRequest_NHS_NUMBER
+	}
+	authorityID := apiv1.CymruEmpiRequest_Authority_value[req.Authority.String()]
+	if authorityID == 0 || authorityID >= LastAuthority {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid authority: %s", req.Authority)
+	}
+	authorityCode := authorityCodes[authorityID]
+	log.Printf("empi request for %s/%s - mapped to %d (%s)", req.Authority, req.Identifier, authorityID, authorityCode)
+
+	return app.GetRawEMPIRequest(ctx, &apiv1.RawCymruEmpiRequest{
+		Authority:  authorityCodes[authorityID],
+		Identifier: req.Identifier,
+	})
+}
+
 // GetRawEMPIRequest fetches a patient using raw authority and identifier codes
 func (app *App) GetRawEMPIRequest(ctx context.Context, req *apiv1.RawCymruEmpiRequest) (*apiv1.Patient, error) {
 	start := time.Now()
@@ -130,7 +147,8 @@ func (app *App) GetRawEMPIRequest(ctx context.Context, req *apiv1.RawCymruEmpiRe
 	}
 	auth := LookupAuthority(req.Authority)
 	if auth == AuthorityUnknown {
-		log.Fatalf("unsupported authority: %s", req.Authority)
+		log.Printf("unsupported authority: %s", req.Authority)
+		return nil, status.Errorf(codes.InvalidArgument, "unsupported authority: %s", req.Authority)
 	}
 	if app.Fake {
 		log.Printf("returning fake result for %s/%s", req.Authority, req.Identifier)
@@ -142,15 +160,15 @@ func (app *App) GetRawEMPIRequest(ctx context.Context, req *apiv1.RawCymruEmpiRe
 	if err != nil {
 		log.Print(err)
 		if urlError, ok := err.(*url.Error); ok {
-			if urlError.Timeout() { //  TODO: flag it was a timeout error with the backend service
-				return nil, urlError
+			if urlError.Timeout() {
+				return nil, status.Errorf(codes.DeadlineExceeded, "NHS Wales' EMPI service did not respond within deadline (%d sec)", app.TimeoutSeconds)
 			}
 		}
 		return nil, err
 	}
 	if pt == nil {
 		log.Printf("Patient %s/%s not found", req.Authority, req.Identifier)
-		return nil, status.Error(codes.NotFound, fmt.Sprintf("patient %s/%s not found", req.Authority, req.Identifier))
+		return nil, status.Errorf(codes.NotFound, "patient %s/%s not found", req.Authority, req.Identifier)
 	}
 	return pt, nil
 }
@@ -307,6 +325,7 @@ const (
 	AuthorityCV
 	AuthorityHD
 	AuthorityPowys
+	LastAuthority
 )
 
 var authorityCodes = [...]string{
@@ -323,6 +342,7 @@ var authorityCodes = [...]string{
 	"149", //HD
 	"170", //Powys
 }
+
 var authorityTypes = [...]string{
 	"",
 	"NH",

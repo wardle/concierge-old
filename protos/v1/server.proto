@@ -18,6 +18,12 @@ service WalesEMPI {
         };
     };
 
+    rpc GetEMPIRequest(CymruEmpiRequest) returns (Patient) {
+        option (google.api.http) = {
+            get: "/v1/wales-empi/{identifier}"
+        };
+    };
+
 }
 
 

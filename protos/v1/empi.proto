@@ -77,13 +77,14 @@ message CymruEmpiRequest {
     enum Authority {
         UNKNOWN = 0;
         NHS_NUMBER = 1;
-        CARDIFF_AND_VALE = 2;
-        ANEURIN_BEVAN = 3;
-        CWM_TAF = 4;
-        SWANSEA = 5;
-        HYWEL_DDA = 6;   
-        BCU_CENTRAL = 7;
-        BCU_MAELOR = 8;
-        BCU_WEST = 9;
+        SWANSEA = 3;
+        ANEURIN_BEVAN = 4;
+        BCU_CENTRAL = 5;
+        BCU_MAELOR = 6;
+        BCU_WEST = 7;
+        CWM_TAF = 8;
+        CARDIFF_AND_VALE = 9;
+        HYWEL_DDA = 10;   
+        POWYS = 11;
     }
 }
