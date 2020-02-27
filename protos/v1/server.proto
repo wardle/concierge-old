@@ -1,0 +1,23 @@
+syntax = "proto3";
+package apiv1;
+
+option go_package = "apiv1";
+option java_package = "com.eldrix.concierge.api";
+option java_outer_classname = "Protos";
+option java_multiple_files = true;
+
+import "empi.proto";
+import "google/api/annotations.proto";
+
+
+service WalesEMPI {
+
+    rpc GetRawEMPIRequest(RawCymruEmpiRequest) returns (Patient) {
+        option (google.api.http) = {
+            get: "/v1/wales-empi/{authority}/{identifier}"
+        };
+    };
+
+}
+
+

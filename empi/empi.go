@@ -3,25 +3,24 @@ package empi
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"encoding/xml"
-	"flag"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 
+	"github.com/gogo/protobuf/jsonpb"
+	"github.com/golang/protobuf/ptypes"
+	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/google/uuid"
 
 	"net/url"
 	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 	"text/template"
 	"time"
 
-	"github.com/gorilla/mux"
+	"github.com/wardle/concierge/apiv1"
+
 	"github.com/patrickmn/go-cache"
 )
 
@@ -86,88 +85,6 @@ func (ep Endpoint) Name() string {
 	return endpointNames[ep]
 }
 
-var endpoint = flag.String("endpoint", "D", "(P)roduction, (T)esting or (D)evelopment")
-var authority = flag.String("authority", "NHS", "Authority, such as NHS, 140 (CAV) etc")
-var identifier = flag.String("id", "", "identifier to fetch e.g. 7253698428, 7705820730, 6145933267")
-var logger = flag.String("log", "", "logfile to use")
-var serve = flag.Bool("serve", false, "whether to start a REST server")
-var port = flag.Int("port", 8080, "port to use")
-var cacheMinutes = flag.Int("cache", 5, "cache expiration in minutes, 0=no cache")
-var fake = flag.Bool("fake", false, "run a fake service")
-var timeoutSeconds = flag.Int("timeout", 2, "timeout in seconds for external services")
-
-// unset http_proxy
-// unset https_proxy
-func main2() {
-	flag.Parse()
-	if *logger != "" {
-		f, err := os.OpenFile(*logger, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
-		if err != nil {
-			log.Fatalf("fatal error: couldn't open log file ('%s'): %s", *logger, err)
-		}
-		log.SetOutput(f)
-		log.SetFlags(log.LstdFlags | log.Lshortfile)
-	}
-	httpProxy, exists := os.LookupEnv("http_proxy") // give warning if proxy set, to help debug connection errors in live
-	if exists {
-		log.Printf("warning: http proxy set to %s\n", httpProxy)
-	}
-	httpsProxy, exists := os.LookupEnv("https_proxy")
-	if exists {
-		log.Printf("warning: https proxy set to %s\n", httpsProxy)
-	}
-	ep := LookupEndpoint(*endpoint)
-	if endpointURLs[ep] == "" {
-		log.Fatalf("error: unknown or unsupported endpoint: %s", *endpoint)
-	}
-
-	// handle a command-line test with a specified identifier
-	if *identifier != "" {
-		ctx := context.Background()
-		auth := LookupAuthority(*authority)
-		if auth == AuthorityUnknown {
-			log.Fatalf("unsupported authority: %s", *authority)
-		}
-		pt, err := performRequest(ctx, endpointURLs[ep], endpointCodes[ep], auth, *identifier)
-		if err != nil {
-			log.Fatal(err)
-		}
-		if pt == nil {
-			log.Printf("Not Found")
-			return
-		}
-		if err := json.NewEncoder(os.Stdout).Encode(pt); err != nil {
-			log.Fatal(err)
-		}
-		return
-	}
-
-	if *serve {
-		sigs := make(chan os.Signal, 1) // channel to receive OS termination/kill/interrupt signal
-		signal.Notify(sigs, os.Interrupt, os.Kill, syscall.SIGTERM)
-		go func() {
-			s := <-sigs
-			log.Printf("RECEIVED SIGNAL: %s", s)
-			os.Exit(1)
-		}()
-		app := new(App)
-		app.Endpoint = ep
-		app.Router = mux.NewRouter().StrictSlash(true)
-		app.Fake = *fake
-		app.TimeoutSeconds = *timeoutSeconds
-		if *cacheMinutes != 0 {
-			app.Cache = cache.New(time.Duration(*cacheMinutes)*time.Minute, time.Duration(*cacheMinutes*2)*time.Minute)
-		}
-		app.Router.HandleFunc("/nhsnumber/{nnn}", app.GetByNhsNumber).Methods("GET")
-		app.Router.HandleFunc("/authority/{authorityCode}/{identifier}", app.GetByIdentifier).Methods("GET")
-		log.Printf("starting REST server: port:%d cache:%dm timeout:%ds endpoint:(%s)%s",
-			*port, *cacheMinutes, *timeoutSeconds, endpointNames[ep], endpointURLs[ep])
-		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), app.Router))
-		return
-	}
-	flag.PrintDefaults()
-}
-
 // Invoke invokes a simple request on the endpoint for the specified authority and identifier
 func Invoke(endpointURL string, processingID string, authority string, identifier string) {
 	ctx := context.Background()
@@ -180,169 +97,122 @@ func Invoke(endpointURL string, processingID string, authority string, identifie
 		log.Fatal(err)
 	}
 	if pt == nil {
-		log.Printf("Not Found")
+		log.Printf("Patient %s/%s not found", authority, identifier)
 		return
 	}
-	if err := json.NewEncoder(os.Stdout).Encode(pt); err != nil {
+	if err := new(jsonpb.Marshaler).Marshal(os.Stdout, pt); err != nil {
 		log.Fatal(err)
 	}
 }
 
-// App represents the application
+// App represents the EMPI application
 type App struct {
 	Endpoint       Endpoint
-	Router         *mux.Router
+	EndpointURL    string       // override URL for the specified endpoint
 	Cache          *cache.Cache // may be nil if not caching
 	Fake           bool
 	TimeoutSeconds int
 }
 
-func (a *App) getCache(key string) (*Patient, bool) {
-	if a.Cache == nil {
+var _ apiv1.WalesEMPIServer = (*App)(nil)
+
+// GetRawEMPIRequest fetches a patient using raw authority and identifier codes
+func (app *App) GetRawEMPIRequest(ctx context.Context, req *apiv1.RawCymruEmpiRequest) (*apiv1.Patient, error) {
+	start := time.Now()
+	key := req.Authority + "/" + req.Identifier
+	pt, found := app.getCache(key)
+	if found {
+		log.Printf("serving request for %s/%s from cache in %s", req.Authority, req.Identifier, time.Since(start))
+		return pt, nil
+	}
+	auth := LookupAuthority(req.Authority)
+	if auth == AuthorityUnknown {
+		log.Fatalf("unsupported authority: %s", req.Authority)
+	}
+	if app.Fake {
+		log.Printf("returning fake result for %s/%s", req.Authority, req.Identifier)
+		return performFake(auth, req.Identifier)
+	}
+	ctx, cancelFunc := context.WithTimeout(ctx, time.Duration(app.TimeoutSeconds)*time.Second)
+	pt, err := performRequest(ctx, app.EndpointURL, app.Endpoint.ProcessingID(), auth, req.Identifier)
+	cancelFunc()
+	if err != nil {
+		log.Print(err)
+		if urlError, ok := err.(*url.Error); ok {
+			if urlError.Timeout() { //  TODO: flag it was a timeout error with the backend service
+				return nil, urlError
+			}
+		}
+		return nil, err
+	}
+	if pt == nil {
+		log.Printf("Patient %s/%s not found", req.Authority, req.Identifier)
+		return nil, nil
+	}
+	return pt, nil
+}
+
+func (app *App) getCache(key string) (*apiv1.Patient, bool) {
+	if app.Cache == nil {
 		return nil, false
 	}
-	if o, found := a.Cache.Get(key); found {
-		return o.(*Patient), true
+	if o, found := app.Cache.Get(key); found {
+		return o.(*apiv1.Patient), true
 	}
 	return nil, false
 }
 
-func (a *App) setCache(key string, value *Patient) {
-	if a.Cache == nil {
+func (app *App) setCache(key string, value *apiv1.Patient) {
+	if app.Cache == nil {
 		return
 	}
-	a.Cache.Set(key, value, cache.DefaultExpiration)
+	app.Cache.Set(key, value, cache.DefaultExpiration)
 }
 
-func (a *App) GetByNhsNumber(w http.ResponseWriter, r *http.Request) {
-	nnn := mux.Vars(r)["nnn"]
-	query := r.URL.Query()
-	user := query.Get("user")
-	log.Printf("request by user: '%s' for nnn: '%s': %+v", user, nnn, r)
-	if user == "" {
-		log.Printf("bad request: invalid user")
-		http.Error(w, "invalid user", http.StatusBadRequest)
-		return
+func performFake(authority Authority, identifier string) (*apiv1.Patient, error) {
+	dob, err := ptypes.TimestampProto(time.Date(1960, 01, 01, 00, 00, 00, 0, time.UTC))
+	if err != nil {
+		return nil, err
 	}
-	if nnn == "" || len(nnn) != 10 {
-		log.Printf("bad request: invalid NHS number")
-		http.Error(w, "invalid nhs number", http.StatusBadRequest)
-		return
-	}
-	a.writeIdentifier(w, r, authorityCodes[AuthorityNHS], nnn, user)
-}
-
-func (a *App) GetByIdentifier(w http.ResponseWriter, r *http.Request) {
-	authority := mux.Vars(r)["authorityCode"]
-	identifier := mux.Vars(r)["identifier"]
-	query := r.URL.Query()
-	user := query.Get("user")
-	log.Printf("request by user:%s for authority:%s id:%s: %+v", user, authority, identifier, r)
-	if user == "" {
-		log.Print("bad request: invalid user")
-		http.Error(w, "invalid user", http.StatusBadRequest)
-		return
-	}
-	if LookupAuthority(authority) == AuthorityUnknown {
-		log.Printf("bad request: unknown authority: %s", authority)
-		http.Error(w, "invalid authority", http.StatusBadRequest)
-		return
-	}
-	a.writeIdentifier(w, r, authority, identifier, user)
-}
-
-func (a *App) writeIdentifier(w http.ResponseWriter, r *http.Request, authority string, identifier string, username string) {
-	start := time.Now()
-	key := authority + "/" + identifier
-	pt, found := a.getCache(key)
-	var err error
-	if !found {
-		if !a.Fake {
-			ctx, cancelFunc := context.WithTimeout(context.Background(), time.Duration(a.TimeoutSeconds)*time.Second)
-			pt, err = performRequest(ctx, endpointURLs[a.Endpoint], endpointCodes[a.Endpoint], LookupAuthority(authority), identifier)
-			cancelFunc()
-		} else {
-			pt, err = performFake(LookupAuthority(authority), identifier)
-		}
-		if err != nil {
-			log.Printf("error: %s", err)
-			if urlError, ok := err.(*url.Error); ok {
-				if urlError.Timeout() {
-					http.Error(w, err.Error(), http.StatusRequestTimeout)
-					return
-				}
-			}
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		a.setCache(key, pt)
-	} else {
-		log.Printf("serving request for %s/%s from cache in %s", authority, identifier, time.Since(start))
-	}
-	if pt == nil {
-		log.Printf("patient with identifier %s/%s not found", authority, identifier)
-		http.NotFound(w, r)
-		return
-	}
-	log.Printf("result: %+v", pt)
-	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-	if err := json.NewEncoder(w).Encode(pt); err != nil {
-		log.Printf("error: %s", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
-func performFake(authority Authority, identifier string) (*Patient, error) {
-	dob := time.Date(1960, 01, 01, 00, 00, 00, 0, time.UTC)
-
-	return &Patient{
+	return &apiv1.Patient{
 		Lastname:            "DUMMY",
 		Firstnames:          "ALBERT",
 		Title:               "DR",
-		Gender:              "M",
-		BirthDate:           &dob,
+		Gender:              apiv1.Patient_MALE,
+		BirthDate:           dob,
 		Surgery:             "W95010",
 		GeneralPractitioner: "G9342400",
-		Identifiers: []Identifier{
-			Identifier{
+		Identifiers: []*apiv1.Identifier{
+			&apiv1.Identifier{
 				System: authorityCodes[authority],
 				Value:  identifier,
 			},
-			Identifier{
+			&apiv1.Identifier{
 				System: "103",
 				Value:  "M1147907",
 			},
 		},
-		Addresses: []Address{
-			Address{
-				Text:       "59 Robins Hill\nBrackla\nBRIDGEND\nCF31 2PJ\nWALES",
-				Line:       "59 Robins Hill",
-				City:       "Brackla",
-				District:   "BRIDGEND",
-				PostalCode: "CF31 2PJ",
-				Country:    "WALES",
+
+		Addresses: []*apiv1.Address{
+			&apiv1.Address{
+				Address1: "59 Robins Hill",
+				Address2: "Brackla",
+				Address3: "Bridgend",
+				Postcode: "CF31 2PJ",
+				Country:  "WALES",
 			},
 		},
-		Telecom: []ContactPoint{
-			ContactPoint{
-				System:      "phone",
-				Value:       "02920747747",
-				Use:         "work",
-				Rank:        1,
-				Description: "Work number",
-			},
-			ContactPoint{
-				System:      "email",
-				Value:       "test@test.com",
-				Use:         "work",
-				Rank:        1,
-				Description: "Work email",
+		Telephones: []*apiv1.Telephone{
+			&apiv1.Telephone{
+				Number:      "02920747747",
+				Description: "Home",
 			},
 		},
+		Emails: []string{"test@test.com"},
 	}, nil
 }
 
-func performRequest(context context.Context, endpointURL string, processingID string, authority Authority, identifier string) (*Patient, error) {
+func performRequest(context context.Context, endpointURL string, processingID string, authority Authority, identifier string) (*apiv1.Patient, error) {
 	start := time.Now()
 	data, err := NewIdentifierRequest(identifier, authority, "221", "100", processingID)
 	if err != nil {
@@ -475,101 +345,33 @@ func LookupAuthority(authority string) Authority {
 	return AuthorityUnknown
 }
 
-// Coding is a reference to a code in a coding system
-type Coding struct {
-	System       string `json:"system"`
-	Version      string `json:"version"`
-	Code         string `json:"code"`
-	Display      string `json:"display"`
-	UserSelected bool   `json:"userSelected"`
-}
-
-// CodeableConcept reflects one or more specific codes from a code system
-type CodeableConcept struct {
-	Coding []Coding `json:"coding"`
-	Text   string   `json:"text"`
-}
-
-// Period reflects a time period
-type Period struct {
-	Start *time.Time `json:"start"`
-	End   *time.Time `json:"end"`
-}
-
-// Reference allows one resource to reference another
-type Reference struct {
-	Reference  string     `json:"reference"`  // Literal reference, absolute or relative URL
-	Type       string     `json:"type"`       // Type reference refers to, eg. Patient, Organization
-	Identifier Identifier `json:"identifier"` // Logical reference when literal reference not known
-	Display    string     `json:"display"`    // Text alternative for the resource
-}
-
-// Identifier represents an organisation's identifier for this patient
-type Identifier struct {
-	Use      string           `json:"use,omitempty"` // usual / official / temp / secondary / old  (if known)
-	Type     *CodeableConcept `json:"type"`
-	System   string           `json:"system"` // uri
-	Value    string           `json:"value"`
-	Period   *Period          `json:"period,omitempty"`
-	Assigner *Reference       `json:"assigner"`
-}
-
-// Address represents an address for this patient
-type Address struct {
-	Use        string  `json:"use,omitempty"`
-	Type       string  `json:"type,omitempty"`
-	Text       string  `json:"text"`
-	Line       string  `json:"line"`
-	City       string  `json:"city"`
-	District   string  `json:"district"`
-	State      string  `json:"state"`
-	PostalCode string  `json:"postalCode"`
-	Country    string  `json:"country"`
-	Period     *Period `json:"period"`
-}
-
-// Patient is a patient
-type Patient struct {
-	Lastname            string         `json:"lastName"`
-	Firstnames          string         `json:"firstNames"`
-	Title               string         `json:"title"`
-	Gender              string         `json:"gender"`
-	BirthDate           *time.Time     `json:"dateBirth"`
-	DeathDate           *time.Time     `json:"dateDeath"`
-	Surgery             string         `json:"surgery"`
-	GeneralPractitioner string         `json:"generalPractitioner"`
-	Identifiers         []Identifier   `json:"identifiers"`
-	Addresses           []Address      `json:"addresses"`
-	Telecom             []ContactPoint `json:"telecom"`
-}
-
-// ContactPoint is a technology-mediated contact point for a person or organization, including telephone, email,
-type ContactPoint struct {
-	System      string  `json:"system"` // phone | fax | email | pager | url | sms | other
-	Value       string  `json:"value"`
-	Use         string  `json:"use"` // home | work | temp | old | mobile - purpose of this contact point
-	Rank        int     `json:"rank"`
-	Period      *Period `json:"period,omitempty"`
-	Description string  `json:"description"` // not standard - textual description
-}
-
 // ToPatient creates a "Patient" from the XML returned from the EMPI service
-func (e *envelope) ToPatient() (*Patient, error) {
-	pt := new(Patient)
+func (e *envelope) ToPatient() (*apiv1.Patient, error) {
+	pt := new(apiv1.Patient)
 	pt.Lastname = e.surname()
 	pt.Firstnames = e.firstnames()
 	if pt.Lastname == "" && pt.Firstnames == "" {
 		return nil, nil
 	}
 	pt.Title = e.title()
-	pt.Gender = e.gender()
+	switch e.gender() {
+	case "M":
+		pt.Gender = apiv1.Patient_MALE
+	case "F":
+		pt.Gender = apiv1.Patient_FEMALE
+	default:
+		pt.Gender = apiv1.Patient_UNKNOWN
+	}
 	pt.BirthDate = e.dateBirth()
-	pt.DeathDate = e.dateDeath()
+	if dd := e.dateDeath(); dd != nil {
+		pt.Deceased = &apiv1.Patient_DeceasedDate{DeceasedDate: dd}
+	}
 	pt.Identifiers = e.identifiers()
 	pt.Addresses = e.addresses()
 	pt.Surgery = e.surgery()
 	pt.GeneralPractitioner = e.generalPractitioner()
-	pt.Telecom = e.telecom()
+	pt.Telephones = e.telephones()
+	pt.Emails = e.emails()
 	return pt, nil
 }
 
@@ -604,7 +406,7 @@ func (e *envelope) gender() string {
 	return e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID8.Text
 }
 
-func (e *envelope) dateBirth() *time.Time {
+func (e *envelope) dateBirth() *timestamp.Timestamp {
 	dob := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID7.TS1.Text
 	if len(dob) > 0 {
 		d, err := parseDate(dob)
@@ -615,7 +417,7 @@ func (e *envelope) dateBirth() *time.Time {
 	return nil
 }
 
-func (e *envelope) dateDeath() *time.Time {
+func (e *envelope) dateDeath() *timestamp.Timestamp {
 	dod := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID29.TS1.Text
 	if len(dod) > 0 {
 		d, err := parseDate(dod)
@@ -634,40 +436,35 @@ func (e *envelope) generalPractitioner() string {
 	return e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PD1.PD14.XCN1.Text
 }
 
-func (e *envelope) identifiers() []Identifier {
-	result := make([]Identifier, 0)
+func (e *envelope) identifiers() []*apiv1.Identifier {
+	result := make([]*apiv1.Identifier, 0)
 	ids := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID3
 	for _, id := range ids {
 		authority := id.CX4.HD1.Text
 		identifier := id.CX1.Text
 		if authority != "" && identifier != "" {
-			result = append(result, Identifier{
-				Use:    "official",
+			result = append(result, &apiv1.Identifier{
 				System: authority,
-				Assigner: &Reference{
-					Reference: authority,
-					Display:   authority, // todo: change to human readable name
-				},
-				Value: identifier,
+				Value:  identifier,
 			})
 		}
 	}
 	return result
 }
 
-func (e *envelope) addresses() []Address {
-	result := make([]Address, 0)
+func (e *envelope) addresses() []*apiv1.Address {
+	result := make([]*apiv1.Address, 0)
 	addresses := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID11
 	for _, address := range addresses {
 		dateFrom, _ := parseDate(address.XAD13.Text)
 		dateTo, _ := parseDate(address.XAD14.Text)
-		result = append(result, Address{
-			Line:       address.XAD1.SAD1.Text,
-			City:       address.XAD2.Text,
-			District:   address.XAD3.Text,
-			Country:    address.XAD4.Text,
-			PostalCode: address.XAD5.Text,
-			Period: &Period{
+		result = append(result, &apiv1.Address{
+			Address1: address.XAD1.SAD1.Text,
+			Address2: address.XAD2.Text,
+			Address3: address.XAD3.Text,
+			Country:  address.XAD4.Text,
+			Postcode: address.XAD5.Text,
+			Period: &apiv1.Period{
 				Start: dateFrom,
 				End:   dateTo,
 			},
@@ -676,23 +473,15 @@ func (e *envelope) addresses() []Address {
 	return result
 }
 
-func (e *envelope) telecom() []ContactPoint {
-	result := make([]ContactPoint, 0)
+func (e *envelope) telephones() []*apiv1.Telephone {
+	result := make([]*apiv1.Telephone, 0)
 	pid13 := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID13
 	for _, telephone := range pid13 {
 		num := telephone.XTN1.Text
 		if num != "" {
-			result = append(result, ContactPoint{
-				System:      "phone",
-				Value:       num,
+			result = append(result, &apiv1.Telephone{
+				Number:      num,
 				Description: telephone.LongName,
-			})
-		}
-		email := telephone.XTN4.Text
-		if email != "" {
-			result = append(result, ContactPoint{
-				System: "email",
-				Value:  email,
 			})
 		}
 	}
@@ -700,24 +489,35 @@ func (e *envelope) telecom() []ContactPoint {
 	for _, telephone := range pid14 {
 		num := telephone.XTN1.Text
 		if num != "" {
-			result = append(result, ContactPoint{
-				System:      "phone",
-				Value:       num,
+			result = append(result, &apiv1.Telephone{
+				Number:      num,
 				Description: telephone.LongName,
-			})
-		}
-		email := telephone.XTN4.Text
-		if email != "" {
-			result = append(result, ContactPoint{
-				System: "email",
-				Value:  email,
 			})
 		}
 	}
 	return result
 }
 
-func parseDate(d string) (*time.Time, error) {
+func (e *envelope) emails() []string {
+	result := make([]string, 0)
+	pid13 := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID13
+	for _, telephone := range pid13 {
+		email := telephone.XTN4.Text
+		if email != "" {
+			result = append(result, email)
+		}
+	}
+	pid14 := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID14
+	for _, telephone := range pid14 {
+		email := telephone.XTN4.Text
+		if email != "" {
+			result = append(result, email)
+		}
+	}
+	return result
+}
+
+func parseDate(d string) (*timestamp.Timestamp, error) {
 	layout := "20060102" // reference date is : Mon Jan 2 15:04:05 MST 2006
 	if len(d) > 8 {
 		d = d[:8]
@@ -726,7 +526,7 @@ func parseDate(d string) (*time.Time, error) {
 	if err != nil || t.IsZero() {
 		return nil, err
 	}
-	return &t, nil
+	return ptypes.TimestampProto(t)
 }
 
 var identifierRequestTemplate = `

@@ -1,8 +1,7 @@
 syntax = "proto3";
+package apiv1;
 
-package api;
-
-//option go_package = "github.com/concierge/api";
+option go_package = "apiv1";
 option java_package = "com.eldrix.concierge.api";
 option java_outer_classname = "Protos";
 option java_multiple_files = true;
@@ -24,7 +23,7 @@ message Patient {
     repeated Identifier identifiers = 10;
     repeated Address addresses = 11;
     repeated Telephone telephones = 12;
-    repeated string email = 13;
+    repeated string emails = 13;
 
     enum Gender {
         UNKNOWN = 0;

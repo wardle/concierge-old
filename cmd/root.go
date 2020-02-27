@@ -45,7 +45,15 @@ the local health and care ecosystem.
 	
 See https://github.com/wardle/concierge`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		logHTTPProxy()
+		warnIfHTTPProxy()
+		if logfile := viper.GetString("log"); logfile != "" {
+			f, err := os.OpenFile(logfile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
+			if err != nil {
+				log.Fatalf("fatal error: couldn't open log file ('%s'): %s", logfile, err)
+			}
+			log.SetOutput(f)
+			log.SetFlags(log.LstdFlags | log.Lshortfile)
+		}
 	},
 }
 
@@ -64,8 +72,10 @@ func init() {
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
-
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.concierge.yaml)")
+
+	rootCmd.PersistentFlags().String("log", "", "Log file to use")
+	viper.BindPFlag("log", rootCmd.PersistentFlags().Lookup("log"))
 }
 
 // initConfig reads in config file and ENV variables if set.
@@ -97,7 +107,7 @@ func initConfig() {
 
 // Log some important configuration variables which can cause live service failings.
 // Directly use an environmental variable lookup, rather than viper, as that looks for upper case versions of the requested variable
-func logHTTPProxy() {
+func warnIfHTTPProxy() {
 	httpProxy, exists := os.LookupEnv("http_proxy") // give warning if proxy set, to help debug connection errors in live
 	if exists {
 		log.Printf("warning: http proxy set to %s\n", httpProxy)
