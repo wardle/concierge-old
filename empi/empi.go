@@ -241,7 +241,7 @@ func performFake(authority Authority, identifier string) (*apiv1.Patient, error)
 
 func performRequest(context context.Context, endpointURL string, processingID string, authority Authority, identifier string) (*apiv1.Patient, error) {
 	start := time.Now()
-	data, err := NewIdentifierRequest(identifier, authority, "221", "100", processingID)
+	data, err := NewIdentifierRequest(strings.ToUpper(identifier), authority, "221", "100", processingID)
 	if err != nil {
 		return nil, err
 	}
