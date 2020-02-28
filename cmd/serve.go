@@ -38,6 +38,8 @@ var serveCmd = &cobra.Command{
 			Options: server.Options{
 				RESTPort: viper.GetInt("port-http"),
 				RPCPort:  viper.GetInt("port-grpc"),
+				CertFile: viper.GetString("cert"),
+				KeyFile:  viper.GetString("key"),
 			},
 			WalesEMPIServer: app,
 		}
@@ -65,4 +67,8 @@ func init() {
 	viper.BindPFlag("empi-cache-minutes", serveCmd.PersistentFlags().Lookup("empi-cache-minutes"))
 	serveCmd.PersistentFlags().Bool("fake", false, "Run a fake server")
 	viper.BindPFlag("fake", serveCmd.PersistentFlags().Lookup("fake"))
+	serveCmd.PersistentFlags().String("cert", "", "SSL certificate file (.cert)")
+	viper.BindPFlag("cert", serveCmd.PersistentFlags().Lookup("cert"))
+	serveCmd.PersistentFlags().String("key", "", "SSL certificate key file (.key)")
+	viper.BindPFlag("key", serveCmd.PersistentFlags().Lookup("key"))
 }

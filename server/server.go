@@ -22,6 +22,7 @@ import (
 // Server represents a combined gRPC and REST server
 type Server struct {
 	Options
+	// modules supported by this server:
 	apiv1.WalesEMPIServer
 }
 
@@ -29,6 +30,8 @@ type Server struct {
 type Options struct {
 	RPCPort  int
 	RESTPort int
+	CertFile string
+	KeyFile  string
 }
 
 // RunServer runs a GRPC and a gateway REST server concurrently
@@ -63,14 +66,21 @@ func (sv *Server) RunServer() error {
 	clientAddr := fmt.Sprintf("localhost:%d", sv.RPCPort)
 	addr := fmt.Sprintf(":%d", sv.RESTPort)
 	dialOpts := []grpc.DialOption{grpc.WithInsecure()} // TODO:use better options
-	mux := runtime.NewServeMux(runtime.WithIncomingHeaderMatcher(headerMatcher))
+	mux := runtime.NewServeMux(
+		runtime.WithIncomingHeaderMatcher(headerMatcher),                                    // handle Accept-Language
+		runtime.WithMarshalerOption(runtime.MIMEWildcard, &runtime.JSONPb{OrigName: false}), // handle JSON camelcase
+	)
 	if sv.WalesEMPIServer != nil {
 		if apiv1.RegisterWalesEMPIHandlerFromEndpoint(ctx, mux, clientAddr, dialOpts); err != nil {
-			return fmt.Errorf("failed to create HTTP reverse proxy: %v", err)
+			return fmt.Errorf("failed to create http reverse proxy: %v", err)
 		}
 	}
-	log.Printf("HTTP Listening on %s\n", addr)
-	return http.ListenAndServe(addr, mux)
+	if sv.Options.CertFile == "" || sv.Options.KeyFile == "" {
+		log.Printf("warning: http listening on %s - not using https: no certificate and key files specified", addr)
+		return http.ListenAndServe(addr, mux)
+	}
+	log.Printf("https listening on %s\n", addr)
+	return http.ListenAndServeTLS(addr, sv.Options.CertFile, sv.Options.KeyFile, mux)
 }
 
 // ensures GRPC gateway passes through the standard HTTP header Accept-Language as "accept-language"
@@ -94,6 +104,6 @@ func (sv *Server) Check(ctx context.Context, r *health.HealthCheckRequest) (*hea
 
 // Watch is a streaming health check to issue changes in health status
 func (sv *Server) Watch(r *health.HealthCheckRequest, w health.Health_WatchServer) error {
-	log.Printf("service health watch request received: %+v", r)
+	log.Printf("service health watch request received but not implemented: %+v", r)
 	return status.Error(codes.Unimplemented, "grpc health watch operation not implemented")
 }
