@@ -154,6 +154,12 @@ func (app *App) GetRawEMPIRequest(ctx context.Context, req *apiv1.RawCymruEmpiRe
 		log.Printf("returning fake result for %s/%s", req.Authority, req.Identifier)
 		return performFake(auth, req.Identifier)
 	}
+	if auth == AuthorityNHS {
+		if IsValidNHSNumber(req.Identifier) == false {
+			log.Printf("request for invalid NHS number: %s", req.Identifier)
+			return nil, status.Errorf(codes.InvalidArgument, "invalid NHS number: %s", req.Identifier)
+		}
+	}
 	ctx, cancelFunc := context.WithTimeout(ctx, time.Duration(app.TimeoutSeconds)*time.Second)
 	pt, err := performRequest(ctx, app.EndpointURL, app.Endpoint.ProcessingID(), auth, req.Identifier)
 	cancelFunc()
