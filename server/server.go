@@ -17,11 +17,16 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	health "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 )
 
 // Server represents a combined gRPC and REST server
+// Generate self-signed local development certificates using
+// openssl req -newkey rsa:2048 -nodes -keyout domain.key -x509 -days 365 -out domain.crt
+// and use "localhost" for host
+//
 type Server struct {
 	Options
 	// modules supported by this server:
@@ -42,7 +47,8 @@ func (sv *Server) RunServer() error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	sigs := make(chan os.Signal, 1) // channel to receive OS termination/kill/interrupt signal so we can log
+	// listen for OS signals for logging and graceful shutdown
+	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, os.Interrupt, os.Kill, syscall.SIGTERM)
 	defer signal.Stop(sigs)
 
@@ -56,7 +62,17 @@ func (sv *Server) RunServer() error {
 			return fmt.Errorf("failed to initialize TCP listen: %v", err)
 		}
 		defer lis.Close()
-		grpcServer = grpc.NewServer()
+		if sv.Options.CertFile == "" || sv.Options.KeyFile == "" {
+			grpcServer = grpc.NewServer()
+		} else {
+			creds, err := credentials.NewServerTLSFromFile(sv.Options.CertFile, sv.Options.KeyFile)
+			if err != nil {
+				return err
+			}
+			grpcServer = grpc.NewServer(
+				grpc.Creds(creds),
+			)
+		}
 		health.RegisterHealthServer(grpcServer, sv)
 		if sv.WalesEMPIServer != nil {
 			log.Printf("registering Wales EMPI module: %+v", sv.WalesEMPIServer)
@@ -71,7 +87,16 @@ func (sv *Server) RunServer() error {
 	g.Go(func() error {
 		clientAddr := fmt.Sprintf("localhost:%d", sv.RPCPort)
 		addr := fmt.Sprintf(":%d", sv.RESTPort)
-		dialOpts := []grpc.DialOption{grpc.WithInsecure()} // TODO:use better options
+		var dialOpts []grpc.DialOption
+		if sv.Options.CertFile == "" || sv.Options.KeyFile == "" {
+			dialOpts = append(dialOpts, grpc.WithInsecure())
+		} else {
+			creds, err := credentials.NewClientTLSFromFile(sv.Options.CertFile, "")
+			if err != nil {
+				return err
+			}
+			dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
+		}
 		mux := runtime.NewServeMux(
 			runtime.WithIncomingHeaderMatcher(headerMatcher),                                    // handle Accept-Language
 			runtime.WithMarshalerOption(runtime.MIMEWildcard, &runtime.JSONPb{OrigName: false}), // handle JSON camelcase
@@ -102,7 +127,7 @@ func (sv *Server) RunServer() error {
 	case <-ctx.Done():
 		break
 	}
-
+	// graceful shutdown
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
 	if httpServer != nil {
@@ -112,6 +137,7 @@ func (sv *Server) RunServer() error {
 	}
 	if grpcServer != nil {
 		grpcServer.GracefulStop()
+		log.Print("grpc server shutdown")
 	}
 	return g.Wait()
 }
