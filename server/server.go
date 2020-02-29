@@ -48,7 +48,7 @@ func (sv *Server) RunServer() error {
 	defer cancel()
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", sv.RPCPort))
 	if err != nil {
-		return fmt.Errorf("failed to initializa TCP listen: %v", err)
+		return fmt.Errorf("failed to initialize TCP listen: %v", err)
 	}
 	defer lis.Close()
 
