@@ -43,9 +43,11 @@ var serveCmd = &cobra.Command{
 			},
 			WalesEMPIServer: app,
 		}
-		log.Printf("starting server: http-port:%d rpc-port:%d cache:%dm timeout:%ds endpoint:(%s)%s",
+		log.Printf("starting server: rpc-port:%d http-port:%d cache:%dm timeout:%ds EMPI endpoint:(%s)%s",
 			server.Options.RPCPort, server.Options.RESTPort, cacheMinutes, app.TimeoutSeconds, endpoint.Name(), app.EndpointURL)
-		log.Fatal(server.RunServer())
+		if err := server.RunServer(); err != nil {
+			log.Fatal(err)
+		}
 	},
 }
 

@@ -9,8 +9,10 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/wardle/concierge/apiv1"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"google.golang.org/grpc"
@@ -36,51 +38,82 @@ type Options struct {
 
 // RunServer runs a GRPC and a gateway REST server concurrently
 func (sv *Server) RunServer() error {
-	sigs := make(chan os.Signal, 1) // channel to receive OS termination/kill/interrupt signal
-	signal.Notify(sigs, os.Interrupt, os.Kill, syscall.SIGTERM)
-	go func() {
-		s := <-sigs
-		log.Printf("RECEIVED SIGNAL: %s", s)
-		os.Exit(1)
-	}()
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", sv.RPCPort))
-	if err != nil {
-		return fmt.Errorf("failed to initialize TCP listen: %v", err)
-	}
-	defer lis.Close()
 
-	go func() {
-		server := grpc.NewServer()
-		health.RegisterHealthServer(server, sv)
+	sigs := make(chan os.Signal, 1) // channel to receive OS termination/kill/interrupt signal so we can log
+	signal.Notify(sigs, os.Interrupt, os.Kill, syscall.SIGTERM)
+	defer signal.Stop(sigs)
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	// run gRPC server
+	var grpcServer *grpc.Server
+	g.Go(func() error {
+		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", sv.RPCPort))
+		if err != nil {
+			return fmt.Errorf("failed to initialize TCP listen: %v", err)
+		}
+		defer lis.Close()
+		grpcServer = grpc.NewServer()
+		health.RegisterHealthServer(grpcServer, sv)
 		if sv.WalesEMPIServer != nil {
-			log.Printf("registering Wales EMPI server implementation: %+v", sv.WalesEMPIServer)
-			apiv1.RegisterWalesEMPIServer(server, sv.WalesEMPIServer)
+			log.Printf("registering Wales EMPI module: %+v", sv.WalesEMPIServer)
+			apiv1.RegisterWalesEMPIServer(grpcServer, sv.WalesEMPIServer)
 		}
 		log.Printf("gRPC Listening on %s\n", lis.Addr().String())
-		log.Print(server.Serve(lis))
-		os.Exit(1)
-	}()
-	clientAddr := fmt.Sprintf("localhost:%d", sv.RPCPort)
-	addr := fmt.Sprintf(":%d", sv.RESTPort)
-	dialOpts := []grpc.DialOption{grpc.WithInsecure()} // TODO:use better options
-	mux := runtime.NewServeMux(
-		runtime.WithIncomingHeaderMatcher(headerMatcher),                                    // handle Accept-Language
-		runtime.WithMarshalerOption(runtime.MIMEWildcard, &runtime.JSONPb{OrigName: false}), // handle JSON camelcase
-	)
-	if sv.WalesEMPIServer != nil {
-		if apiv1.RegisterWalesEMPIHandlerFromEndpoint(ctx, mux, clientAddr, dialOpts); err != nil {
-			return fmt.Errorf("failed to create http reverse proxy: %v", err)
+		return grpcServer.Serve(lis)
+	})
+
+	// run HTTP gateway
+	var httpServer *http.Server
+	g.Go(func() error {
+		clientAddr := fmt.Sprintf("localhost:%d", sv.RPCPort)
+		addr := fmt.Sprintf(":%d", sv.RESTPort)
+		dialOpts := []grpc.DialOption{grpc.WithInsecure()} // TODO:use better options
+		mux := runtime.NewServeMux(
+			runtime.WithIncomingHeaderMatcher(headerMatcher),                                    // handle Accept-Language
+			runtime.WithMarshalerOption(runtime.MIMEWildcard, &runtime.JSONPb{OrigName: false}), // handle JSON camelcase
+		)
+		if sv.WalesEMPIServer != nil {
+			if err := apiv1.RegisterWalesEMPIHandlerFromEndpoint(ctx, mux, clientAddr, dialOpts); err != nil {
+				return fmt.Errorf("failed to create http reverse proxy: %v", err)
+			}
+		}
+		httpServer = &http.Server{
+			Addr:         addr,
+			Handler:      mux,
+			ReadTimeout:  5 * time.Second,
+			WriteTimeout: 10 * time.Second,
+		}
+		if sv.Options.CertFile == "" || sv.Options.KeyFile == "" {
+			log.Printf("warning: http listening on %s (no certificate or key specified)", addr)
+			return httpServer.ListenAndServe()
+		}
+		log.Printf("https listening on %s\n", addr)
+		return httpServer.ListenAndServeTLS(sv.Options.CertFile, sv.Options.KeyFile)
+	})
+
+	select {
+	case sig := <-sigs:
+		log.Printf("received signal: %v", sig)
+		break
+	case <-ctx.Done():
+		break
+	}
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+	if httpServer != nil {
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			log.Print(err)
 		}
 	}
-	if sv.Options.CertFile == "" || sv.Options.KeyFile == "" {
-		log.Printf("warning: http listening on %s - not using https: no certificate and key files specified", addr)
-		return http.ListenAndServe(addr, mux)
+	if grpcServer != nil {
+		grpcServer.GracefulStop()
 	}
-	log.Printf("https listening on %s\n", addr)
-	return http.ListenAndServeTLS(addr, sv.Options.CertFile, sv.Options.KeyFile, mux)
+	return g.Wait()
 }
 
 // ensures GRPC gateway passes through the standard HTTP header Accept-Language as "accept-language"
@@ -96,9 +129,9 @@ func headerMatcher(headerName string) (mdName string, ok bool) {
 // Check is a health check, implementing the grpc-health service
 // see https://godoc.org/google.golang.org/grpc/health/grpc_health_v1#HealthServer
 func (sv *Server) Check(ctx context.Context, r *health.HealthCheckRequest) (*health.HealthCheckResponse, error) {
-	log.Printf("service health check received: %+v", r)
 	response := new(health.HealthCheckResponse)
 	response.Status = health.HealthCheckResponse_SERVING
+	log.Printf("service health check received: %s", response.Status)
 	return response, nil
 }
 
