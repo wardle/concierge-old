@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -19,11 +20,13 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	health "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
 
 // Server represents a combined gRPC and REST server
-// Generate self-signed local development certificates using
+// Generate self-signed local development certificates using:
 // openssl req -newkey rsa:2048 -nodes -keyout domain.key -x509 -days 365 -out domain.crt
 // and use "localhost" for host
 //
@@ -62,17 +65,17 @@ func (sv *Server) RunServer() error {
 			return fmt.Errorf("failed to initialize TCP listen: %v", err)
 		}
 		defer lis.Close()
-		if sv.Options.CertFile == "" || sv.Options.KeyFile == "" {
-			grpcServer = grpc.NewServer()
-		} else {
+		opts := []grpc.ServerOption{
+			grpc.UnaryInterceptor(loggingInterceptor),
+		}
+		if sv.Options.CertFile != "" && sv.Options.KeyFile != "" {
 			creds, err := credentials.NewServerTLSFromFile(sv.Options.CertFile, sv.Options.KeyFile)
 			if err != nil {
 				return err
 			}
-			grpcServer = grpc.NewServer(
-				grpc.Creds(creds),
-			)
+			opts = append(opts, grpc.Creds(creds))
 		}
+		grpcServer = grpc.NewServer(opts...)
 		health.RegisterHealthServer(grpcServer, sv)
 		if sv.WalesEMPIServer != nil {
 			log.Printf("registering Wales EMPI module: %+v", sv.WalesEMPIServer)
@@ -150,6 +153,32 @@ func headerMatcher(headerName string) (mdName string, ok bool) {
 		return "accept-language", true
 	}
 	return runtime.DefaultHeaderMatcher(headerName)
+}
+
+func loggingInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	var sb strings.Builder
+	if md, ok := metadata.FromIncomingContext(ctx); ok {
+		for _, host := range md.Get("x-forwarded-host") {
+			sb.WriteString(host)
+			sb.WriteString(" ")
+		}
+	}
+	if p, ok := peer.FromContext(ctx); ok {
+		sb.WriteString(p.Addr.String())
+		sb.WriteString(" ")
+		if p.AuthInfo != nil {
+			sb.WriteString(p.AuthInfo.AuthType())
+		}
+		sb.WriteString(" ")
+	}
+	sb.WriteString(info.FullMethod)
+	resp, err := handler(ctx, req)
+	if err != nil {
+		log.Printf("error: %s : %s", sb.String(), err)
+	} else {
+		log.Printf("success: %s", sb.String())
+	}
+	return resp, err
 }
 
 // Check is a health check, implementing the grpc-health service
