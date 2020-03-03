@@ -31,6 +31,21 @@ nhs.uk = CYMRU.NHS.UK
 `
 )
 
+// Authenticate is a simple password check against the active directory
+func Authenticate(username string, password string) (bool, error) {
+	cfg, err := config.NewConfigFromString(krbConfig)
+	if err != nil {
+		return false, err
+	}
+	cl := client.NewClientWithPassword(username, "CYMRU.NHS.UK", password, cfg, client.DisablePAFXFAST(true))
+	err = cl.Login()
+	if err != nil {
+		return false, err
+	} else {
+		return true, nil
+	}
+}
+
 // Experiments perform tests/experiments against the NHS Wales active directory, using credentials supplied
 func Experiments(username string, password string) {
 
