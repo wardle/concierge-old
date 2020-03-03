@@ -125,7 +125,7 @@ func (app *App) GetEMPIRequest(ctx context.Context, req *apiv1.CymruEmpiRequest)
 	}
 	authorityID := apiv1.CymruEmpiRequest_Authority_value[req.Authority.String()]
 	if authorityID == 0 || authorityID >= LastAuthority {
-		return nil, status.Errorf(codes.InvalidArgument, "Invalid authority: %s", req.Authority)
+		return nil, status.Errorf(codes.InvalidArgument, "invalid authority: %s", req.Authority)
 	}
 	authorityCode := authorityCodes[authorityID]
 	log.Printf("empi request for %s/%s - mapped to %d (%s)", req.Authority, req.Identifier, authorityID, authorityCode)
@@ -150,21 +150,19 @@ func (app *App) GetRawEMPIRequest(ctx context.Context, req *apiv1.RawCymruEmpiRe
 		log.Printf("unsupported authority: %s", req.Authority)
 		return nil, status.Errorf(codes.InvalidArgument, "unsupported authority: %s", req.Authority)
 	}
+	if auth == AuthorityNHS {
+		if IsValidNHSNumber(req.Identifier) == false {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid NHS number: %s", req.Identifier)
+		}
+	}
 	if app.Fake {
 		log.Printf("returning fake result for %s/%s", req.Authority, req.Identifier)
 		return performFake(auth, req.Identifier)
-	}
-	if auth == AuthorityNHS {
-		if IsValidNHSNumber(req.Identifier) == false {
-			log.Printf("request for invalid NHS number: %s", req.Identifier)
-			return nil, status.Errorf(codes.InvalidArgument, "invalid NHS number: %s", req.Identifier)
-		}
 	}
 	ctx, cancelFunc := context.WithTimeout(ctx, time.Duration(app.TimeoutSeconds)*time.Second)
 	pt, err := performRequest(ctx, app.EndpointURL, app.Endpoint.ProcessingID(), auth, req.Identifier)
 	cancelFunc()
 	if err != nil {
-		log.Print(err)
 		if urlError, ok := err.(*url.Error); ok {
 			if urlError.Timeout() {
 				return nil, status.Errorf(codes.DeadlineExceeded, "NHS Wales' EMPI service did not respond within deadline (%d sec)", app.TimeoutSeconds)
@@ -173,7 +171,6 @@ func (app *App) GetRawEMPIRequest(ctx context.Context, req *apiv1.RawCymruEmpiRe
 		return nil, err
 	}
 	if pt == nil {
-		log.Printf("Patient %s/%s not found", req.Authority, req.Identifier)
 		return nil, status.Errorf(codes.NotFound, "patient %s/%s not found", req.Authority, req.Identifier)
 	}
 	return pt, nil
@@ -205,7 +202,7 @@ func performFake(authority Authority, identifier string) (*apiv1.Patient, error)
 		Lastname:            "DUMMY",
 		Firstnames:          "ALBERT",
 		Title:               "DR",
-		Gender:              apiv1.Patient_MALE,
+		Gender:              apiv1.Gender_MALE,
 		BirthDate:           dob,
 		Surgery:             "W95010",
 		GeneralPractitioner: "G9342400",
@@ -385,11 +382,11 @@ func (e *envelope) ToPatient() (*apiv1.Patient, error) {
 	pt.Title = e.title()
 	switch e.gender() {
 	case "M":
-		pt.Gender = apiv1.Patient_MALE
+		pt.Gender = apiv1.Gender_MALE
 	case "F":
-		pt.Gender = apiv1.Patient_FEMALE
+		pt.Gender = apiv1.Gender_FEMALE
 	default:
-		pt.Gender = apiv1.Patient_UNKNOWN
+		pt.Gender = apiv1.Gender_UNKNOWN
 	}
 	pt.BirthDate = e.dateBirth()
 	if dd := e.dateDeath(); dd != nil {
