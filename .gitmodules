@@ -1,0 +1,3 @@
+[submodule "vendor/concierge-api"]
+	path = vendor/concierge-api
+	url = https://github.com/wardle/concierge-api
