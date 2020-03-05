@@ -1,7 +1,6 @@
 package empi
 
 import (
-	"fmt"
 	"strings"
 	"unicode"
 )
