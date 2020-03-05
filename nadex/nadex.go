@@ -41,9 +41,8 @@ func Authenticate(username string, password string) (bool, error) {
 	err = cl.Login()
 	if err != nil {
 		return false, err
-	} else {
-		return true, nil
 	}
+	return true, nil
 }
 
 // Experiments perform tests/experiments against the NHS Wales active directory, using credentials supplied

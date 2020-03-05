@@ -1,22 +1,23 @@
+// Package empi provides a lightweight wrapper around the NHS Wales' EMPI service
 package empi
 
 import (
 	"bytes"
 	"context"
 	"encoding/xml"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 
-	"github.com/gogo/protobuf/jsonpb"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"net/url"
-	"os"
 	"strings"
 	"text/template"
 	"time"
@@ -102,9 +103,7 @@ func Invoke(endpointURL string, processingID string, authority string, identifie
 		log.Printf("Patient %s/%s not found", authority, identifier)
 		return
 	}
-	if err := new(jsonpb.Marshaler).Marshal(os.Stdout, pt); err != nil {
-		log.Fatal(err)
-	}
+	fmt.Print(protojson.Format(pt))
 }
 
 // App represents the EMPI application

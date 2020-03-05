@@ -1,27 +1,31 @@
 module github.com/wardle/concierge
 
-go 1.13
+go 1.14
 
 require (
-	github.com/gogo/protobuf v1.2.1
-	github.com/golang/protobuf v1.3.2
+	github.com/golang/protobuf v1.4.0-rc.2
 	github.com/google/uuid v1.1.1
-	github.com/gopherjs/gopherjs v0.0.0-20190910122728-9d188e94fb99 // indirect
-	github.com/gorilla/mux v1.7.4
-	github.com/grpc-ecosystem/grpc-gateway v1.9.0
-	github.com/grpc-ecosystem/grpc-health-probe v0.3.1 // indirect
+	github.com/grpc-ecosystem/grpc-gateway v1.14.1
 	github.com/hashicorp/go-uuid v1.0.2 // indirect
 	github.com/jcmturner/gofork v1.0.0 // indirect
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/patrickmn/go-cache v2.1.0+incompatible
-	github.com/spf13/cobra v0.0.5
+	github.com/pelletier/go-toml v1.6.0 // indirect
+	github.com/spf13/afero v1.2.2 // indirect
+	github.com/spf13/cast v1.3.1 // indirect
+	github.com/spf13/cobra v0.0.6
+	github.com/spf13/jwalterweatherman v1.1.0 // indirect
+	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/spf13/viper v1.6.2
-	github.com/stretchr/testify v1.4.0 // indirect
-	golang.org/x/crypto v0.0.0-20191011191535-87dc89f01550 // indirect
-	golang.org/x/net v0.0.0-20200202094626-16171245cfb2
-	golang.org/x/sync v0.0.0-20190423024810-112230192c58
-	google.golang.org/genproto v0.0.0-20191009194640-548a555dbc03
-	google.golang.org/grpc v1.24.0
+	golang.org/x/crypto v0.0.0-20200302210943-78000ba7a073 // indirect
+	golang.org/x/net v0.0.0-20200301022130-244492dfa37a // indirect
+	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
+	golang.org/x/sys v0.0.0-20200302150141-5c8b2ff67527 // indirect
+	golang.org/x/text v0.3.2 // indirect
+	google.golang.org/genproto v0.0.0-20200304201815-d429ff31ee6c
+	google.golang.org/grpc v1.27.1
+	google.golang.org/protobuf v1.20.0
+	gopkg.in/ini.v1 v1.52.0 // indirect
 	gopkg.in/jcmturner/aescts.v1 v1.0.1 // indirect
 	gopkg.in/jcmturner/dnsutils.v1 v1.0.1 // indirect
 	gopkg.in/jcmturner/goidentity.v3 v3.0.0 // indirect
@@ -29,4 +33,5 @@ require (
 	gopkg.in/jcmturner/rpc.v1 v1.1.0 // indirect
 	gopkg.in/korylprince/go-ad-auth.v2 v2.2.0
 	gopkg.in/ldap.v3 v3.1.0
+	gopkg.in/yaml.v2 v2.2.8 // indirect
 )

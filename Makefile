@@ -13,10 +13,14 @@ default: generate test build
 all: generate test build build_all
 
 generate:
-	protoc -Iprotos/v1 -I${GOOGLEAPIS} --go_out=plugins=grpc:apiv1 empi.proto
-	protoc -Iprotos/v1 -I${GOOGLEAPIS} --go_out=plugins=grpc:apiv1 server.proto
-	protoc -Iprotos/v1 -I${GOOGLEAPIS} --grpc-gateway_out=logtostderr=true:apiv1 server.proto
-#	protoc -Iprotos/v1 -I${GOOGLEAPIS} --swagger_out=logtostderr=true:. server.proto
+	mkdir -p apiv1
+	protoc -Iprotos/concierge-api/v1 -I${GOOGLEAPIS} --go_out=plugins=grpc:${GOPATH}/src model.proto
+	protoc -Iprotos/concierge-api/v1 -I${GOOGLEAPIS} --go_out=plugins=grpc:${GOPATH}/src empi.proto
+	protoc -Iprotos/concierge-api/v1 -I${GOOGLEAPIS} --grpc-gateway_out=logtostderr=true:${GOPATH}/src empi.proto
+#	protoc -Ivendor/concierge-api/v1 -I${GOOGLEAPIS} --swagger_out=logtostderr=true:. concierge.proto
+
+generate-jar:
+	protoc -Iprotos/v1 -I${GOOGLEAPIS} --plugin=protoc-gen-grpc-java=/usr/local/bin/protoc-gen-grpc-java-1.27.2-osx-x86_64.exe --grpc-java_out=wibble --java_out=concierge-protos-v${VERSION}.jar concierge.proto
 
 bench:
 	go test -bench=.  ./concierge
@@ -39,4 +43,5 @@ update:
 
 clean:
 	@$(RM) ${BINARY}
+	@$(RM) concierge-protos-v*.jar
 	@find ${ROOT_DIR} -name '${BINARY}[-?][a-zA-Z0-9]*[-?][a-zA-Z0-9]*' -delete
