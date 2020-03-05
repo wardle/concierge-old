@@ -16,6 +16,9 @@ generate:
 	mkdir -p apiv1
 	protoc -Iprotos/concierge-api/v1 -I${GOOGLEAPIS} --go_out=plugins=grpc:${GOPATH}/src model.proto
 	protoc -Iprotos/concierge-api/v1 -I${GOOGLEAPIS} --go_out=plugins=grpc:${GOPATH}/src empi.proto
+	# when the gRPC team release a standalone protoc-gen-go-grpc binary, use that like this, 
+	#protoc -Iprotos/concierge-api/v1 -I${GOOGLEAPIS} --go_out=${GOPATH}/src --go-grpc_out=${GOPATH}/src model.proto
+	#protoc -Iprotos/concierge-api/v1 -I${GOOGLEAPIS} --go_out=${GOPATH}/src --go-grpc_out=${GOPATH}/src empi.proto
 	protoc -Iprotos/concierge-api/v1 -I${GOOGLEAPIS} --grpc-gateway_out=logtostderr=true:${GOPATH}/src empi.proto
 #	protoc -Ivendor/concierge-api/v1 -I${GOOGLEAPIS} --swagger_out=logtostderr=true:. concierge.proto
 
