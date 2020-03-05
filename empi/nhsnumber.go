@@ -18,7 +18,6 @@ func IsValidNHSNumber(nnn string) bool {
 	nni := make([]int, 10)
 	sum, cd := 0, 0
 	for i, c := range nnn {
-		fmt.Printf("processing %d/%c\n", i, c)
 		if unicode.IsDigit(c) == false {
 			return false
 		}
