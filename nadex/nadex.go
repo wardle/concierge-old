@@ -113,6 +113,14 @@ func (app App) GetPractitioner(ctx context.Context, r *apiv1.PractitionerRequest
 		return nil, status.Errorf(codes.InvalidArgument, "more than one match for username %s", r.Username)
 	}
 	entry := sr.Entries[0]
+	entry.PrettyPrint(0)
+	phones := make([]*apiv1.Telephone, 0)
+	if n := entry.GetAttributeValue("mobile"); n != "" {
+		phones = append(phones, &apiv1.Telephone{Number: n, Description: "Mobile"})
+	}
+	if n := entry.GetAttributeValue("telephoneNumber"); n != "" {
+		phones = append(phones, &apiv1.Telephone{Number: n, Description: "Office"})
+	}
 	user := &apiv1.Practitioner{
 		Active: true,
 		Names: []*apiv1.HumanName{
@@ -125,12 +133,12 @@ func (app App) GetPractitioner(ctx context.Context, r *apiv1.PractitionerRequest
 		Emails: []string{
 			entry.GetAttributeValue("mail"),
 		},
+		Telephones: phones,
 		Identifier: &apiv1.Identifier{
 			System: "cymru.nhs.uk", // TODO: need to check unique system identifier for user directory
 			Value:  entry.GetAttributeValue("sAMAccountName"),
 		},
 	}
-	log.Print(protojson.Format(user))
 	return user, nil
 }
 
