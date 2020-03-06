@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/wardle/concierge/apiv1"
+	"google.golang.org/protobuf/encoding/protojson"
 	"gopkg.in/jcmturner/gokrb5.v7/client"
 	"gopkg.in/jcmturner/gokrb5.v7/config"
 	auth "gopkg.in/korylprince/go-ad-auth.v2"
@@ -57,9 +59,9 @@ func Experiments(username string, password string) {
 
 	err = cl.Login()
 	if err != nil {
-		log.Fatalf("kerberos error: %s\n", err)
+		log.Fatalf("failed login for user %s: kerberos error: %w\n", username, err)
 	} else {
-		log.Printf("Kerberos success!\n")
+		log.Printf("successful login for user %s", username)
 	}
 
 	// now let's use LDAP authentication and lookup instead
@@ -72,7 +74,7 @@ func Experiments(username string, password string) {
 
 	status, err := auth.Authenticate(config, username, password)
 	if err != nil {
-		panic(err)
+		log.pan
 	}
 	if status {
 		log.Printf("LDAP login success!")
@@ -113,10 +115,20 @@ func Experiments(username string, password string) {
 	}
 
 	for _, entry := range sr.Entries {
-		givenNames := entry.GetAttributeValue("givenName")
-		surname := entry.GetAttributeValue("sn")
-		email := entry.GetAttributeValue("mail")
-		jobTitle := entry.GetAttributeValue("title")
-		log.Printf("%s:\n firstnames:%v lastname:%v email:%v job title:%v\n", entry.DN, givenNames, surname, email, jobTitle)
+		user := &apiv1.Practitioner{
+			Active: true,
+			Names: []*apiv1.HumanName{
+				&apiv1.HumanName{
+					Given:    entry.GetAttributeValue("givenName"),
+					Family:   entry.GetAttributeValue("sn"),
+					Prefixes: []string{entry.GetAttributeValue("title")},
+					Use:      apiv1.HumanName_OFFICIAL,
+				},
+			},
+			Emails: []string{
+				entry.GetAttributeValue("mail"),
+			},
+		}
+		log.Printf(protojson.Format(user))
 	}
 }
