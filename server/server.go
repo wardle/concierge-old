@@ -34,6 +34,7 @@ type Server struct {
 	Options
 	// modules supported by this server:
 	apiv1.WalesEMPIServer
+	apiv1.PractitionerDirectoryServer
 }
 
 // Options defines the options for a server.
@@ -81,6 +82,10 @@ func (sv *Server) RunServer() error {
 			log.Printf("registering Wales EMPI module: %+v", sv.WalesEMPIServer)
 			apiv1.RegisterWalesEMPIServer(grpcServer, sv.WalesEMPIServer)
 		}
+		if sv.PractitionerDirectoryServer != nil {
+			log.Print("registering practitioner directory service")
+			apiv1.RegisterPractitionerDirectoryServer(grpcServer, sv.PractitionerDirectoryServer)
+		}
 		log.Printf("gRPC Listening on %s\n", lis.Addr().String())
 		return grpcServer.Serve(lis)
 	})
@@ -106,7 +111,12 @@ func (sv *Server) RunServer() error {
 		)
 		if sv.WalesEMPIServer != nil {
 			if err := apiv1.RegisterWalesEMPIHandlerFromEndpoint(ctx, mux, clientAddr, dialOpts); err != nil {
-				return fmt.Errorf("failed to create http reverse proxy: %v", err)
+				return fmt.Errorf("failed to create empi http reverse proxy: %w", err)
+			}
+		}
+		if sv.PractitionerDirectoryServer != nil {
+			if err := apiv1.RegisterPractitionerDirectoryHandlerFromEndpoint(ctx, mux, clientAddr, dialOpts); err != nil {
+				return fmt.Errorf("failed to create practitioner directory http reverse proxy: %w", err)
 			}
 		}
 		httpServer = &http.Server{

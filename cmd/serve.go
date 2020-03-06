@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/wardle/concierge/empi"
+	"github.com/wardle/concierge/nadex"
 	"github.com/wardle/concierge/server"
 )
 
@@ -17,23 +18,27 @@ var serveCmd = &cobra.Command{
 	Short: "Starts a server (gRPC and REST)",
 	Long:  `Starts a server (gRPC and REST)`,
 	Run: func(cmd *cobra.Command, args []string) {
-		app := new(empi.App)
+		empiApp := new(empi.App)
 		endpoint := empi.LookupEndpoint(viper.GetString("empi-endpoint"))
 		if endpoint == empi.UnknownEndpoint {
 			log.Fatalf("unknown endpoint: %v", cmd.Flag("empi-endpoint"))
 		}
-		app.Endpoint = endpoint
+		empiApp.Endpoint = endpoint
 		if endpointURL := viper.GetString("empi-endpoint-url"); endpointURL != "" {
-			app.EndpointURL = endpointURL
+			empiApp.EndpointURL = endpointURL
 		} else {
-			app.EndpointURL = endpoint.URL()
+			empiApp.EndpointURL = endpoint.URL()
 		}
-		app.Fake = viper.GetBool("fake")
-		app.TimeoutSeconds = viper.GetInt("empi-timeout-seconds")
+		empiApp.Fake = viper.GetBool("fake")
+		empiApp.TimeoutSeconds = viper.GetInt("empi-timeout-seconds")
 		cacheMinutes := viper.GetInt("empi-cache-minutes")
 		if cacheMinutes != 0 {
-			app.Cache = cache.New(time.Duration(cacheMinutes)*time.Minute, time.Duration(cacheMinutes*2)*time.Minute)
+			empiApp.Cache = cache.New(time.Duration(cacheMinutes)*time.Minute, time.Duration(cacheMinutes*2)*time.Minute)
 		}
+		log.Printf("empi configuration: cache:%dm timeout:%ds EMPI endpoint:(%s)%s", cacheMinutes, empiApp.TimeoutSeconds, endpoint.Name(), empiApp.EndpointURL)
+		nadexApp := new(nadex.App)
+		nadexApp.Username = viper.GetString("nadex-username") // this will be fallback username/password to use
+		nadexApp.Password = viper.GetString("nadex-password")
 		server := server.Server{
 			Options: server.Options{
 				RESTPort: viper.GetInt("port-http"),
@@ -41,10 +46,10 @@ var serveCmd = &cobra.Command{
 				CertFile: viper.GetString("cert"),
 				KeyFile:  viper.GetString("key"),
 			},
-			WalesEMPIServer: app,
+			WalesEMPIServer:             empiApp,
+			PractitionerDirectoryServer: nadexApp,
 		}
-		log.Printf("starting server: rpc-port:%d http-port:%d cache:%dm timeout:%ds EMPI endpoint:(%s)%s",
-			server.Options.RPCPort, server.Options.RESTPort, cacheMinutes, app.TimeoutSeconds, endpoint.Name(), app.EndpointURL)
+		log.Printf("starting server: rpc-port:%d http-port:%d", server.Options.RPCPort, server.Options.RESTPort)
 		if err := server.RunServer(); err != nil {
 			log.Fatal(err)
 		}
@@ -73,4 +78,8 @@ func init() {
 	viper.BindPFlag("cert", serveCmd.PersistentFlags().Lookup("cert"))
 	serveCmd.PersistentFlags().String("key", "", "SSL certificate key file (.key)")
 	viper.BindPFlag("key", serveCmd.PersistentFlags().Lookup("key"))
+	serveCmd.PersistentFlags().String("nadex-username", "", "Username for directory lookups")
+	viper.BindPFlag("nadex-username", serveCmd.PersistentFlags().Lookup("nadex-username"))
+	serveCmd.PersistentFlags().String("nadex-password", "", "Password for directory lookups")
+	viper.BindPFlag("nadex-password", serveCmd.PersistentFlags().Lookup("nadex-password"))
 }

@@ -1,10 +1,13 @@
 package nadex
 
 import (
+	"context"
 	"fmt"
 	"log"
 
 	"github.com/wardle/concierge/apiv1"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 	"gopkg.in/jcmturner/gokrb5.v7/client"
 	"gopkg.in/jcmturner/gokrb5.v7/config"
@@ -32,6 +35,92 @@ CYMRU.NHS.UK = {
 nhs.uk = CYMRU.NHS.UK
 `
 )
+
+// App reflects the NADEX server application
+type App struct {
+	Username string
+	Password string
+}
+
+func (app App) GetPractitioner(ctx context.Context, r *apiv1.PractitionerRequest) (*apiv1.Practitioner, error) {
+	config := &auth.Config{
+		Server:   "cymru.nhs.uk",
+		Port:     389,
+		BaseDN:   "OU=Users,DC=cymru,DC=nhs,DC=uk",
+		Security: auth.SecurityNone,
+	}
+	// for the moment, we use the fallback username/password configured - TODO: use user who is making request's own credentials
+	auth, err := auth.Authenticate(config, app.Username, app.Password)
+	if err != nil {
+		return nil, err
+	}
+	if auth == false {
+		log.Print("failed to login for user %s", app.Username)
+		return nil, status.Errorf(codes.Unavailable, "failed to login for user %s", app.Username)
+	}
+	conn, err := config.Connect()
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Conn.Close()
+	// search for a user
+	searchRequest := ldap.NewSearchRequest(
+		"dc=cymru,dc=nhs,dc=uk", // The base dn to search
+		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
+		fmt.Sprintf("(&(objectClass=User)(sAMAccountName=%s))", r.Username), // The filter to apply
+		// A list attributes to retrieve
+		[]string{
+			"sAMAccountName",       // username
+			"displayNamePrintable", // full name including title
+			"sn",                   // surname
+			"givenName",            // given names
+			"mail",                 // email
+			"title",                // job title, not name prefix
+			"photo",
+			"physicalDeliveryOfficeName",
+			"postalAddress", "streetAddress",
+			"l",  // l=city
+			"st", // state/province
+			"postalCode", "telephoneNumber",
+			"mobile",
+			"company",
+			"department",
+			"wWWHomePage",
+			"postOfficeBox", // appears to be used for professional registration e.g. GMC: 4624000
+		},
+		nil,
+	)
+	sr, err := conn.Conn.Search(searchRequest)
+	if err != nil {
+		return nil, err
+	}
+	if len(sr.Entries) == 0 {
+		return nil, status.Errorf(codes.NotFound, "user not found: %s", r.Username)
+	}
+	if len(sr.Entries) > 1 {
+		return nil, status.Errorf(codes.InvalidArgument, "more than one match for username %s", r.Username)
+	}
+	entry := sr.Entries[0]
+	user := &apiv1.Practitioner{
+		Active: true,
+		Names: []*apiv1.HumanName{
+			&apiv1.HumanName{
+				Given:  entry.GetAttributeValue("givenName"),
+				Family: entry.GetAttributeValue("sn"),
+				Use:    apiv1.HumanName_OFFICIAL,
+			},
+		},
+		Emails: []string{
+			entry.GetAttributeValue("mail"),
+		},
+		Identifier: &apiv1.Identifier{
+			System: "cymru.nhs.uk", // TODO: need to check unique system identifier for user directory
+			Value:  entry.GetAttributeValue("sAMAccountName"),
+		},
+	}
+	log.Print(protojson.Format(user))
+	return user, nil
+}
 
 // Authenticate is a simple password check against the active directory
 func Authenticate(username string, password string) (bool, error) {
@@ -148,7 +237,7 @@ func Experiments(username string, password string, lookupUsername string) {
 			},
 			Identifier: &apiv1.Identifier{
 				System: "cymru.nhs.uk", // TODO: need to check unique system identifier for user directory
-				Value:  "sAMAccountName",
+				Value:  entry.GetAttributeValue("sAMAccountName"),
 			},
 		}
 		log.Printf(protojson.Format(user))
