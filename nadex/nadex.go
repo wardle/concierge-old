@@ -48,7 +48,7 @@ func Authenticate(username string, password string) (bool, error) {
 }
 
 // Experiments perform tests/experiments against the NHS Wales active directory, using credentials supplied
-func Experiments(username string, password string) {
+func Experiments(username string, password string, lookupUsername string) {
 
 	// first, let's try kerberos
 	cfg, err := config.NewConfigFromString(krbConfig)
@@ -100,12 +100,30 @@ func Experiments(username string, password string) {
 	}
 
 	// search for a user
-	searchUser := "ma090906" // for testing
 	searchRequest := ldap.NewSearchRequest(
 		"dc=cymru,dc=nhs,dc=uk", // The base dn to search
 		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-		fmt.Sprintf("(&(objectClass=User)(sAMAccountName=%s))", searchUser), // The filter to apply
-		[]string{"sn", "givenName", "mail", "title"},                        // A list attributes to retrieve
+		fmt.Sprintf("(&(objectClass=User)(sAMAccountName=%s))", lookupUsername), // The filter to apply
+		// A list attributes to retrieve
+		[]string{
+			"sAMAccountName",       // username
+			"displayNamePrintable", // full name including title
+			"sn",                   // surname
+			"givenName",            // given names
+			"mail",                 // email
+			"title",                // job title, not name prefix
+			"photo",
+			"physicalDeliveryOfficeName",
+			"postalAddress", "streetAddress",
+			"l",  // l=city
+			"st", // state/province
+			"postalCode", "telephoneNumber",
+			"mobile",
+			"company",
+			"department",
+			"wWWHomePage",
+			"postOfficeBox", // appears to be used for professional registration e.g. GMC: 4624000
+		},
 		nil,
 	)
 
@@ -115,18 +133,22 @@ func Experiments(username string, password string) {
 	}
 
 	for _, entry := range sr.Entries {
+		entry.PrettyPrint(2)
 		user := &apiv1.Practitioner{
 			Active: true,
 			Names: []*apiv1.HumanName{
 				&apiv1.HumanName{
-					Given:    entry.GetAttributeValue("givenName"),
-					Family:   entry.GetAttributeValue("sn"),
-					Prefixes: []string{entry.GetAttributeValue("title")},
-					Use:      apiv1.HumanName_OFFICIAL,
+					Given:  entry.GetAttributeValue("givenName"),
+					Family: entry.GetAttributeValue("sn"),
+					Use:    apiv1.HumanName_OFFICIAL,
 				},
 			},
 			Emails: []string{
 				entry.GetAttributeValue("mail"),
+			},
+			Identifier: &apiv1.Identifier{
+				System: "cymru.nhs.uk", // TODO: need to check unique system identifier for user directory
+				Value:  "sAMAccountName",
 			},
 		}
 		log.Printf(protojson.Format(user))

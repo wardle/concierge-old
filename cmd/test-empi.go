@@ -29,8 +29,9 @@ import (
 
 // empiCmd is the "concierge test empi" command for simple testing of the EMPI at the command-line
 var empiCmd = &cobra.Command{
-	Use: "empi [authority] <identifier>", //(e.g. NHS 7253698428, NHS 7705820730, NHS 6145933267)
-	Example: `concierge test empi NHS 7253698428
+	Use: "empi [authority] <identifier>", 
+	Example: 
+`concierge test empi NHS 7253698428
 concierge test empi NHS 7705820730
 concierge test empi NHS 6145933267
 concierge test empi 7253698428`,

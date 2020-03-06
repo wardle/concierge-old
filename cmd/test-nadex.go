@@ -24,13 +24,13 @@ import (
 
 // testNadexCmd represents the testNadex command
 var testNadexCmd = &cobra.Command{
-	Use:   "nadex <username> <password>",
+	Use:   "nadex <username> <password> <username>",
 	Short: "Tests connectivity to the NHS Wales' national directory service (NADEX)",
 	Long:  ``,
-	Args:  cobra.ExactArgs(2),
+	Args:  cobra.ExactArgs(3),
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("testNadex called")
-		nadex.Experiments(args[0], args[1])
+		nadex.Experiments(args[0], args[1], args[2])
 	},
 }
 
