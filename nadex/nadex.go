@@ -139,6 +139,11 @@ func (app App) GetPractitioner(ctx context.Context, r *apiv1.PractitionerRequest
 			Value:  entry.GetAttributeValue("sAMAccountName"),
 		},
 	}
+	if title := entry.GetAttributeValue("title"); title != "" {
+		user.Roles = []*apiv1.PractitionerRole{
+			&apiv1.PractitionerRole{JobTitle: title},
+		}
+	}
 	return user, nil
 }
 
