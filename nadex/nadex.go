@@ -59,7 +59,7 @@ func Experiments(username string, password string) {
 
 	err = cl.Login()
 	if err != nil {
-		log.Fatalf("failed login for user %s: kerberos error: %w\n", username, err)
+		log.Fatalf("failed login for user %s: kerberos error: %s\n", username, err)
 	} else {
 		log.Printf("successful login for user %s", username)
 	}
@@ -74,7 +74,7 @@ func Experiments(username string, password string) {
 
 	status, err := auth.Authenticate(config, username, password)
 	if err != nil {
-		log.pan
+		log.Fatalf("authentication error: %s", err)
 	}
 	if status {
 		log.Printf("LDAP login success!")
