@@ -55,7 +55,7 @@ func (app App) GetPractitioner(ctx context.Context, r *apiv1.PractitionerRequest
 		return nil, err
 	}
 	if auth == false {
-		log.Print("failed to login for user %s", app.Username)
+		log.Printf("failed to login for user %s", app.Username)
 		return nil, status.Errorf(codes.Unavailable, "failed to login for user %s", app.Username)
 	}
 	conn, err := config.Connect()
@@ -63,6 +63,18 @@ func (app App) GetPractitioner(ctx context.Context, r *apiv1.PractitionerRequest
 		return nil, err
 	}
 	defer conn.Conn.Close()
+	// perform bind
+	upn, err := config.UPN(app.Username)
+	if err != nil {
+		return nil, err
+	}
+	success, err := conn.Bind(upn, app.Password)
+	if err != nil {
+		return nil, err
+	}
+	if !success {
+		return nil, status.Errorf(codes.Unavailable, "failed to login for user %s", app.Username)
+	}
 	// search for a user
 	searchRequest := ldap.NewSearchRequest(
 		"dc=cymru,dc=nhs,dc=uk", // The base dn to search
