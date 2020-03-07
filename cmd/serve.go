@@ -39,6 +39,7 @@ var serveCmd = &cobra.Command{
 		nadexApp := new(nadex.App)
 		nadexApp.Username = viper.GetString("nadex-username") // this will be fallback username/password to use
 		nadexApp.Password = viper.GetString("nadex-password")
+		nadexApp.Fake = viper.GetBool("fake")
 		server := server.Server{
 			Options: server.Options{
 				RESTPort: viper.GetInt("port-http"),

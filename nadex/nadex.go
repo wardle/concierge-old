@@ -40,9 +40,13 @@ nhs.uk = CYMRU.NHS.UK
 type App struct {
 	Username string
 	Password string
+	Fake     bool
 }
 
 func (app App) GetPractitioner(ctx context.Context, r *apiv1.PractitionerRequest) (*apiv1.Practitioner, error) {
+	if app.Fake {
+		return app.GetFakePractitioner(ctx, r)
+	}
 	config := &auth.Config{
 		Server:   "cymru.nhs.uk",
 		Port:     389,
@@ -145,6 +149,21 @@ func (app App) GetPractitioner(ctx context.Context, r *apiv1.PractitionerRequest
 		}
 	}
 	return user, nil
+}
+
+func (app App) GetFakePractitioner(ctx context.Context, r *apiv1.PractitionerRequest) (*apiv1.Practitioner, error) {
+	p := &apiv1.Practitioner{
+		Active: true,
+		Emails: []string{"wibble@wobble.org"},
+		Names: []*apiv1.HumanName{
+			&apiv1.HumanName{Given: "Fred", Family: "Flintstone", Prefixes: []string{"Mr"}},
+		},
+		Roles: []*apiv1.PractitionerRole{
+			&apiv1.PractitionerRole{JobTitle: "Consultant Neurologist"},
+		},
+		Identifier: &apiv1.Identifier{Value: r.GetUsername()},
+	}
+	return p, nil
 }
 
 // Authenticate is a simple password check against the active directory
