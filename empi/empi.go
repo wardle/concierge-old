@@ -214,6 +214,10 @@ func performFake(authority Authority, identifier string) (*apiv1.Patient, error)
 				System: "103",
 				Value:  "M1147907",
 			},
+			&apiv1.Identifier{
+				System: "RWMBV",
+				Value:  "X234567",
+			},
 		},
 
 		Addresses: []*apiv1.Address{
@@ -345,6 +349,21 @@ var authorityCodes = [...]string{
 	"170", //Powys
 }
 
+var hospitalCodes = [...]string{
+	"",
+	"NHS",
+	"",
+	"RVFAR", // Royal Gwent
+	"RYMC7", // Morriston
+	"",
+	"",
+	"",
+	"RYLB3", // Prince Charles Hospital
+	"RVMBV", // UHW
+	"",
+	"",
+}
+
 var authorityTypes = [...]string{
 	"",
 	"NH",
@@ -461,6 +480,7 @@ func (e *envelope) generalPractitioner() string {
 	return e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PD1.PD14.XCN1.Text
 }
 
+// TODO: fix identifiers to use system based on new ODS identifier system
 func (e *envelope) identifiers() []*apiv1.Identifier {
 	result := make([]*apiv1.Identifier, 0)
 	ids := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID3
@@ -468,8 +488,12 @@ func (e *envelope) identifiers() []*apiv1.Identifier {
 		authority := id.CX4.HD1.Text
 		identifier := id.CX1.Text
 		if authority != "" && identifier != "" {
+			system := authority
+			if a := LookupAuthority(authority); hospitalCodes[a] != "" {
+				system = hospitalCodes[a]
+			}
 			result = append(result, &apiv1.Identifier{
-				System: authority,
+				System: system,
 				Value:  identifier,
 			})
 		}
