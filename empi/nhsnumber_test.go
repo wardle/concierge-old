@@ -9,6 +9,7 @@ func TestValidation(t *testing.T) {
 		"6148595893",
 		"4865447040",
 		"4823917286",
+		"482 391 7286",
 	}
 	invalid := []string{
 		"",

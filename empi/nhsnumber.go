@@ -11,9 +11,11 @@ import (
 //
 func IsValidNHSNumber(nnn string) bool {
 	var err error
+	nnn = strings.ReplaceAll(nnn, " ", "")
 	if nnn == "" || len(nnn) != 10 {
 		return false
 	}
+
 	nni := make([]int, 10)
 	sum, cd := 0, 0
 	for i, c := range nnn {
