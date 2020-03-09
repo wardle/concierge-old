@@ -411,18 +411,15 @@ func (e *envelope) identifiers() []*apiv1.Identifier {
 	for _, id := range ids {
 		authority := id.CX4.HD1.Text
 		identifier := id.CX1.Text
-		log.Printf("processing identifier: %s/%s", authority, identifier)
 		if authority != "" && identifier != "" {
 			system := authority
 			if a := LookupAuthority(authority); hospitalCodes[a] != "" {
-				log.Printf("Recognised code %s so mapped to hospital %s", authority, hospitalCodes[a])
 				system = hospitalCodes[a]
 			}
 			result = append(result, &apiv1.Identifier{
 				System: system,
 				Value:  identifier,
 			})
-			log.Printf("Identifier: %v", result)
 		}
 	}
 	return result
