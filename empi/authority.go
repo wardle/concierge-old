@@ -55,7 +55,7 @@ var hospitalCodes = [...]string{
 	"",
 	"",
 	"RYLB3", // Prince Charles Hospital
-	"RVMBV", // UHW
+	"RWMBV", // UHW
 	"",
 	"",
 }
