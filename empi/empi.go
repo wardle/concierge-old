@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"regexp"
 
 	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/timestamp"
@@ -471,19 +472,22 @@ func (e *envelope) telephones() []*apiv1.Telephone {
 	return result
 }
 
+// sanity check for emails
+var rxEmail = regexp.MustCompile("^[a-zA-Z0-9.!#$%&'*+\\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
+
 func (e *envelope) emails() []string {
 	result := make([]string, 0)
 	pid13 := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID13
 	for _, telephone := range pid13 {
 		email := telephone.XTN4.Text
-		if email != "" {
+		if email != "" && len(email) < 255 && rxEmail.MatchString(email) {
 			result = append(result, email)
 		}
 	}
 	pid14 := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID14
 	for _, telephone := range pid14 {
 		email := telephone.XTN4.Text
-		if email != "" {
+		if email != "" && len(email) < 255 && rxEmail.MatchString(email) {
 			result = append(result, email)
 		}
 	}
