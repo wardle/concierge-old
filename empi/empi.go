@@ -15,6 +15,7 @@ import (
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 
@@ -120,6 +121,13 @@ var _ apiv1.WalesEMPIServer = (*App)(nil)
 
 // GetEMPIRequest fetches a patient using an identifier code, with authority optional and defaulting to NHS number
 func (app *App) GetEMPIRequest(ctx context.Context, req *apiv1.CymruEmpiRequest) (*apiv1.Patient, error) {
+	var email string
+	if headers, ok := metadata.FromIncomingContext(ctx); ok {
+		emails := headers["from"]
+		if len(emails) > 0 {
+			email = emails[0]
+		}
+	}
 	if req.Authority == apiv1.CymruEmpiRequest_UNKNOWN {
 		req.Authority = apiv1.CymruEmpiRequest_NHS_NUMBER
 	}
@@ -128,7 +136,7 @@ func (app *App) GetEMPIRequest(ctx context.Context, req *apiv1.CymruEmpiRequest)
 		return nil, status.Errorf(codes.InvalidArgument, "invalid authority: %s", req.Authority)
 	}
 	authorityCode := authorityCodes[authorityID]
-	log.Printf("empi request for %s/%s - mapped to %d (%s)", req.Authority, req.Identifier, authorityID, authorityCode)
+	log.Printf("empi request from '%s' for %s/%s - mapped to %d (%s)", email, req.Authority, req.Identifier, authorityID, authorityCode)
 
 	return app.GetRawEMPIRequest(ctx, &apiv1.RawCymruEmpiRequest{
 		Authority:  authorityCodes[authorityID],
@@ -172,6 +180,7 @@ func (app *App) GetRawEMPIRequest(ctx context.Context, req *apiv1.RawCymruEmpiRe
 	if pt == nil {
 		return nil, status.Errorf(codes.NotFound, "patient %s/%s not found", req.Authority, req.Identifier)
 	}
+	log.Printf("response for %s: %s", req.GetIdentifier(), protojson.MarshalOptions{}.Format(pt))
 	return pt, nil
 }
 
@@ -406,6 +415,7 @@ func (e *envelope) generalPractitioner() string {
 }
 
 // TODO: fix identifiers to use system based on new ODS identifier system
+// NHS Digital (England) define identifier as https://fhir.nhs.uk/Id/ods-organization-code and ODS code
 func (e *envelope) identifiers() []*apiv1.Identifier {
 	result := make([]*apiv1.Identifier, 0)
 	ids := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID3
