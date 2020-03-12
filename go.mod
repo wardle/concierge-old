@@ -3,9 +3,9 @@ module github.com/wardle/concierge
 go 1.14
 
 require (
-	github.com/golang/protobuf v1.4.0-rc.2
+	github.com/golang/protobuf v1.4.0-rc.4
 	github.com/google/uuid v1.1.1
-	github.com/grpc-ecosystem/grpc-gateway v1.14.1
+	github.com/grpc-ecosystem/grpc-gateway v1.14.3
 	github.com/hashicorp/go-uuid v1.0.2 // indirect
 	github.com/jcmturner/gofork v1.0.0 // indirect
 	github.com/mitchellh/go-homedir v1.1.0
@@ -24,7 +24,7 @@ require (
 	golang.org/x/text v0.3.2 // indirect
 	google.golang.org/genproto v0.0.0-20200305110556-506484158171
 	google.golang.org/grpc v1.27.1
-	google.golang.org/protobuf v0.0.0-20200305173516-13e7f145cc57
+	google.golang.org/protobuf v1.20.1
 	gopkg.in/ini.v1 v1.52.0 // indirect
 	gopkg.in/jcmturner/aescts.v1 v1.0.1 // indirect
 	gopkg.in/jcmturner/dnsutils.v1 v1.0.1 // indirect
