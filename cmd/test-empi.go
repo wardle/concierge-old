@@ -29,9 +29,8 @@ import (
 
 // empiCmd is the "concierge test empi" command for simple testing of the EMPI at the command-line
 var empiCmd = &cobra.Command{
-	Use: "empi [authority] <identifier>", 
-	Example: 
-`concierge test empi NHS 7253698428
+	Use: "empi [authority] <identifier>",
+	Example: `concierge test empi NHS 7253698428
 concierge test empi NHS 7705820730
 concierge test empi NHS 6145933267
 concierge test empi 7253698428`,
@@ -39,7 +38,7 @@ concierge test empi 7253698428`,
 		if len(args) < 1 || len(args) > 3 {
 			return errors.New("requires an an optional authority code and a mandatory identifier argument")
 		}
-		if len(args) == 2 && empi.LookupAuthority(args[0]) == empi.AuthorityUnknown {
+		if len(args) == 2 && empi.LookupAuthority("https://fhir.nhs.uk/Id/ods-organization-code", args[0]) == empi.AuthorityUnknown {
 			return fmt.Errorf("unsupported authority code: %s", args[0])
 		}
 		return nil

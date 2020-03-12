@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/wardle/concierge/apiv1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/encoding/protojson"
 	"gopkg.in/jcmturner/gokrb5.v7/client"
 	"gopkg.in/jcmturner/gokrb5.v7/config"
 	auth "gopkg.in/korylprince/go-ad-auth.v2"
@@ -125,6 +125,21 @@ func (app App) GetPractitioner(ctx context.Context, r *apiv1.PractitionerRequest
 	if n := entry.GetAttributeValue("telephoneNumber"); n != "" {
 		phones = append(phones, &apiv1.Telephone{Number: n, Description: "Office"})
 	}
+	identifiers := make([]*apiv1.Identifier, 0)
+	identifiers = append(identifiers, &apiv1.Identifier{
+		System: "cymru.nhs.uk", // TODO: need to check unique system identifier for user directory
+		Value:  entry.GetAttributeValue("sAMAccountName"),
+	})
+	//  bizarrely, the active directory uses postOfficeBox to store professional registration information
+	if profReg := entry.GetAttributeValue("postOfficeBox"); profReg != "" && len(profReg) > 4 {
+		switch {
+		case strings.HasPrefix(profReg, "GMC:"):
+			identifiers = append(identifiers, &apiv1.Identifier{
+				System: "https://fhir.hl7.org.uk/Id/gmc-number", // see https://github.com/HL7-UK/System-Identifiers
+				Value:  strings.TrimSpace(profReg[4:]),
+			})
+		}
+	}
 	user := &apiv1.Practitioner{
 		Active: true,
 		Names: []*apiv1.HumanName{
@@ -137,11 +152,8 @@ func (app App) GetPractitioner(ctx context.Context, r *apiv1.PractitionerRequest
 		Emails: []string{
 			entry.GetAttributeValue("mail"),
 		},
-		Telephones: phones,
-		Identifier: &apiv1.Identifier{
-			System: "cymru.nhs.uk", // TODO: need to check unique system identifier for user directory
-			Value:  entry.GetAttributeValue("sAMAccountName"),
-		},
+		Telephones:  phones,
+		Identifiers: identifiers,
 	}
 	if title := entry.GetAttributeValue("title"); title != "" {
 		user.Roles = []*apiv1.PractitionerRole{
@@ -161,7 +173,7 @@ func (app App) GetFakePractitioner(ctx context.Context, r *apiv1.PractitionerReq
 		Roles: []*apiv1.PractitionerRole{
 			&apiv1.PractitionerRole{JobTitle: "Consultant Neurologist"},
 		},
-		Identifier: &apiv1.Identifier{Value: r.GetUsername()},
+		Identifiers: []*apiv1.Identifier{&apiv1.Identifier{Value: r.GetUsername()}},
 	}
 	return p, nil
 }
@@ -178,112 +190,4 @@ func Authenticate(username string, password string) (bool, error) {
 		return false, err
 	}
 	return true, nil
-}
-
-// Experiments perform tests/experiments against the NHS Wales active directory, using credentials supplied
-func Experiments(username string, password string, lookupUsername string) {
-
-	// first, let's try kerberos
-	cfg, err := config.NewConfigFromString(krbConfig)
-	if err != nil {
-		panic(err)
-	}
-	cl := client.NewClientWithPassword(username, "CYMRU.NHS.UK", password, cfg, client.DisablePAFXFAST(true))
-
-	err = cl.Login()
-	if err != nil {
-		log.Fatalf("failed login for user %s: kerberos error: %s\n", username, err)
-	} else {
-		log.Printf("successful login for user %s", username)
-	}
-
-	// now let's use LDAP authentication and lookup instead
-	config := &auth.Config{
-		Server:   "cymru.nhs.uk",
-		Port:     389,
-		BaseDN:   "OU=Users,DC=cymru,DC=nhs,DC=uk",
-		Security: auth.SecurityNone,
-	}
-
-	status, err := auth.Authenticate(config, username, password)
-	if err != nil {
-		log.Fatalf("authentication error: %s", err)
-	}
-	if status {
-		log.Printf("LDAP login success!")
-	} else {
-		log.Fatalf("failed login")
-	}
-
-	conn, err := config.Connect()
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer conn.Conn.Close()
-	upn, err := config.UPN(username)
-	if err != nil {
-		log.Fatal(err)
-	}
-	success, err := conn.Bind(upn, password)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if !success {
-		log.Fatal("invalid credentials")
-	}
-
-	// search for a user
-	searchRequest := ldap.NewSearchRequest(
-		"dc=cymru,dc=nhs,dc=uk", // The base dn to search
-		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-		fmt.Sprintf("(&(objectClass=User)(sAMAccountName=%s))", lookupUsername), // The filter to apply
-		// A list attributes to retrieve
-		[]string{
-			"sAMAccountName",       // username
-			"displayNamePrintable", // full name including title
-			"sn",                   // surname
-			"givenName",            // given names
-			"mail",                 // email
-			"title",                // job title, not name prefix
-			"photo",
-			"physicalDeliveryOfficeName",
-			"postalAddress", "streetAddress",
-			"l",  // l=city
-			"st", // state/province
-			"postalCode", "telephoneNumber",
-			"mobile",
-			"company",
-			"department",
-			"wWWHomePage",
-			"postOfficeBox", // appears to be used for professional registration e.g. GMC: 4624000
-		},
-		nil,
-	)
-
-	sr, err := conn.Conn.Search(searchRequest)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	for _, entry := range sr.Entries {
-		entry.PrettyPrint(2)
-		user := &apiv1.Practitioner{
-			Active: true,
-			Names: []*apiv1.HumanName{
-				&apiv1.HumanName{
-					Given:  entry.GetAttributeValue("givenName"),
-					Family: entry.GetAttributeValue("sn"),
-					Use:    apiv1.HumanName_OFFICIAL,
-				},
-			},
-			Emails: []string{
-				entry.GetAttributeValue("mail"),
-			},
-			Identifier: &apiv1.Identifier{
-				System: "cymru.nhs.uk", // TODO: need to check unique system identifier for user directory
-				Value:  entry.GetAttributeValue("sAMAccountName"),
-			},
-		}
-		log.Printf(protojson.Format(user))
-	}
 }

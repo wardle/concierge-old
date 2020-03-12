@@ -16,10 +16,14 @@ limitations under the License.
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"log"
 
 	"github.com/spf13/cobra"
+	"github.com/wardle/concierge/apiv1"
 	"github.com/wardle/concierge/nadex"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 // testNadexCmd represents the testNadex command
@@ -30,7 +34,19 @@ var testNadexCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(3),
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("testNadex called")
-		nadex.Experiments(args[0], args[1], args[2])
+		nadex := nadex.App{
+			Username: args[0],
+			Password: args[1],
+			Fake:     false,
+		}
+		p, err := nadex.GetPractitioner(context.Background(), &apiv1.PractitionerRequest{
+			System:   "wales.nhs.uk",
+			Username: args[2],
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Print(protojson.Format(p))
 	},
 }
 
