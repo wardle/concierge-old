@@ -91,18 +91,18 @@ func (ep Endpoint) Name() string {
 }
 
 // Invoke invokes a simple request on the endpoint for the specified authority and identifier
-func Invoke(endpointURL string, processingID string, authority string, identifier string) {
+func Invoke(endpointURL string, processingID string, authorityCode string, identifier string) {
 	ctx := context.Background()
-	auth := LookupAuthority(authority)
+	auth := LookupAuthority(odsSystem, authorityCode)
 	if auth == AuthorityUnknown {
-		log.Fatalf("unsupported authority: %s", authority)
+		log.Fatalf("unsupported authority: %s", authorityCode)
 	}
 	pt, err := performRequest(ctx, endpointURL, processingID, auth, identifier)
 	if err != nil {
 		log.Fatal(err)
 	}
 	if pt == nil {
-		log.Printf("Patient %s/%s not found", authority, identifier)
+		log.Printf("Patient %s/%s not found", authorityCode, identifier)
 		return
 	}
 	fmt.Print(protojson.Format(pt))
@@ -135,6 +135,7 @@ func (app *App) GetEMPIRequest(ctx context.Context, req *apiv1.CymruEmpiRequest)
 	if authorityID == 0 || authorityID >= LastAuthority {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid authority: %s", req.Authority)
 	}
+	// we have a 1:1 map between protobuf defined authorities and our list of authorities
 	authorityCode := authorityCodes[authorityID]
 	log.Printf("empi request from '%s' for %s/%s - mapped to %d (%s)", email, req.Authority, req.Identifier, authorityID, authorityCode)
 
@@ -153,7 +154,7 @@ func (app *App) GetRawEMPIRequest(ctx context.Context, req *apiv1.RawCymruEmpiRe
 		log.Printf("serving request for %s/%s from cache in %s", req.Authority, req.Identifier, time.Since(start))
 		return pt, nil
 	}
-	auth := LookupAuthority(req.Authority)
+	auth := LookupAuthority(odsSystem, req.Authority)
 	if auth == AuthorityUnknown {
 		log.Printf("unsupported authority: %s", req.Authority)
 		return nil, status.Errorf(codes.InvalidArgument, "unsupported authority: %s", req.Authority)
@@ -424,7 +425,7 @@ func (e *envelope) identifiers() []*apiv1.Identifier {
 		identifier := id.CX1.Text
 		if authority != "" && identifier != "" {
 			system := authority
-			if a := LookupAuthority(authority); hospitalCodes[a] != "" {
+			if a := LookupAuthority(odsSystem, authority); hospitalCodes[a] != "" {
 				system = hospitalCodes[a]
 			}
 			result = append(result, &apiv1.Identifier{
