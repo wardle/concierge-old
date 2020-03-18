@@ -33,13 +33,13 @@ var (
 )
 
 // ErrNoResolver is an error for when a valid resolver is not registered for the specified URI
-var ErrNoResolver = errors.New("identifiers: no resolver for uri")
+var ErrNoResolver = errors.New("no resolver for uri")
 
 // ErrNoMapper is an error when when a mapper is not registered to convert from the specified URI to another
-var ErrNoMapper = errors.New("identiiers: no mapper for uri")
+var ErrNoMapper = errors.New("no mapper for uri")
 
 // ErrNotFound is an error when an identifier is not found
-var ErrNotFound = errors.New("identifiers: identifier not found")
+var ErrNotFound = errors.New("identifier not found")
 
 // Register registers an identifier system with the registry
 func Register(name string, uri string) {
