@@ -92,6 +92,7 @@ func (app *App) GetPractitioner(ctx context.Context, r *apiv1.Identifier) (*apiv
 	if r.System != identifiers.CymruUserID {
 		return nil, fmt.Errorf("unsupported identifier system: %s. supported: %s", r.System, identifiers.CymruUserID)
 	}
+	log.Printf("nadex: request for %s|%s", r.System, r.Value)
 	if app.Fake {
 		return app.GetFakePractitioner(ctx, r)
 	}
@@ -107,7 +108,7 @@ func (app *App) GetPractitioner(ctx context.Context, r *apiv1.Identifier) (*apiv
 		return nil, err
 	}
 	if auth == false {
-		log.Printf("failed to login for user %s", app.Username)
+		log.Printf("nadex: failed to login for user %s", app.Username)
 		return nil, status.Errorf(codes.Unavailable, "failed to login for user %s", app.Username)
 	}
 	conn, err := config.Connect()
@@ -159,13 +160,13 @@ func (app *App) GetPractitioner(ctx context.Context, r *apiv1.Identifier) (*apiv
 		return nil, err
 	}
 	if len(sr.Entries) == 0 {
-		return nil, status.Errorf(codes.NotFound, "user not found: %s", r.Value)
+		log.Printf("nadex: user %s|%s not found", r.System, r.Value)
+		return nil, status.Errorf(codes.NotFound, "user not found: %s|%s", r.System, r.Value)
 	}
 	if len(sr.Entries) > 1 {
 		return nil, status.Errorf(codes.InvalidArgument, "more than one match for username %s", r.Value)
 	}
 	entry := sr.Entries[0]
-	entry.PrettyPrint(0)
 	phones := make([]*apiv1.Telephone, 0)
 	if n := entry.GetAttributeValue("mobile"); n != "" {
 		phones = append(phones, &apiv1.Telephone{Number: n, Description: "Mobile"})
@@ -208,9 +209,11 @@ func (app *App) GetPractitioner(ctx context.Context, r *apiv1.Identifier) (*apiv
 			&apiv1.PractitionerRole{Role: &apiv1.Role{JobTitle: title}},
 		}
 	}
+	log.Printf("nadex: returning user: %+v", user)
 	return user, nil
 }
 
+// GetFakePractitioner returns a fake practitioner, useful in testing without a live backend service
 func (app App) GetFakePractitioner(ctx context.Context, r *apiv1.Identifier) (*apiv1.Practitioner, error) {
 	p := &apiv1.Practitioner{
 		Active: true,
@@ -226,6 +229,7 @@ func (app App) GetFakePractitioner(ctx context.Context, r *apiv1.Identifier) (*a
 			&apiv1.Identifier{System: identifiers.GMCNumber, Value: "4624000"},
 		},
 	}
+	log.Printf("nadex: returning fake practitioner: %+v", p)
 	return p, nil
 }
 
