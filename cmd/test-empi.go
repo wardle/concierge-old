@@ -19,19 +19,24 @@ limitations under the License.
 package cmd
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"log"
 
 	"github.com/spf13/cobra"
+	"github.com/wardle/concierge/apiv1"
 	"github.com/wardle/concierge/empi"
+	"github.com/wardle/concierge/identifiers"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 // empiCmd is the "concierge test empi" command for simple testing of the EMPI at the command-line
 var empiCmd = &cobra.Command{
 	Use: "empi [authority] <identifier>",
-	Example: `concierge test empi NHS 7253698428
-concierge test empi NHS 7705820730
-concierge test empi NHS 6145933267
+	Example: `concierge test empi https://fhir.nhs.uk/Id/nhs-number 7253698428
+concierge test empi https://fhir.nhs.uk/Id/nhs-number 7705820730
+concierge test empi https://fhir.nhs.uk/Id/nhs-number 6145933267
 concierge test empi 7253698428`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 || len(args) > 3 {
@@ -42,16 +47,16 @@ concierge test empi 7253698428`,
 	Short: "Test a query against the NHS Wales' EMPI",
 	Long:  `Test a query against the NHS Wales' EMPI`,
 	Run: func(cmd *cobra.Command, args []string) {
-		authority := "NHS"
-		var identifier string
+		system := identifiers.NHSNumber
+		var value string
 		switch len(args) {
 		case 1:
-			identifier = args[0]
+			value = args[0]
 		case 2:
-			authority = args[0]
-			identifier = args[1]
+			system = args[0]
+			value = args[1]
 		default:
-			log.Fatalf("incorrect number of arguments: %v. expected [authority] identifier", args)
+			log.Fatalf("incorrect number of arguments: %v. expected [system] identifier", args)
 		}
 		endpoint := empi.LookupEndpoint(cmd.Flag("endpoint").Value.String())
 		endpointURL := endpoint.URL()
@@ -62,7 +67,12 @@ concierge test empi 7253698428`,
 		if endpointURL == "" {
 			log.Fatalf("invalid endpoint URL")
 		}
-		empi.Invoke(endpointURL, endpoint.ProcessingID(), authority, identifier)
+		empiSvc := empi.App{Endpoint: endpoint, EndpointURL: endpointURL}
+		pt, err := empiSvc.GetEMPIRequest(context.Background(), &apiv1.Identifier{System: system, Value: value})
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Print(protojson.Format(pt))
 	},
 }
 

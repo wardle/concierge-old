@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/xml"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -91,24 +90,6 @@ func (ep Endpoint) Name() string {
 	return endpointNames[ep]
 }
 
-// Invoke invokes a simple request on the endpoint for the specified authority and identifier
-func Invoke(endpointURL string, processingID string, empiOrgCode string, identifier string) {
-	ctx := context.Background()
-	auth := lookupFromEmpiOrgCode(empiOrgCode)
-	if auth == AuthorityUnknown {
-		log.Fatalf("empi: unsupported authority: %s", empiOrgCode)
-	}
-	pt, err := performRequest(ctx, endpointURL, processingID, auth, identifier)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if pt == nil {
-		log.Printf("empi: patient %s/%s not found", empiOrgCode, identifier)
-		return
-	}
-	fmt.Print(protojson.Format(pt))
-}
-
 // App represents the EMPI application
 type App struct {
 	Endpoint       Endpoint
@@ -170,7 +151,11 @@ func (app *App) GetInternalEMPIRequest(ctx context.Context, req *apiv1.Identifie
 		log.Printf("empi: returning fake result for %s/%s", req.System, req.Value)
 		return performFake(authority, req.Value)
 	}
-	ctx, cancelFunc := context.WithTimeout(ctx, time.Duration(app.TimeoutSeconds)*time.Second)
+	timeout := app.TimeoutSeconds
+	if timeout == 0 {
+		timeout = 1
+	}
+	ctx, cancelFunc := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	pt, err := performRequest(ctx, app.EndpointURL, app.Endpoint.ProcessingID(), authority, req.Value)
 	cancelFunc()
 	if err != nil {
