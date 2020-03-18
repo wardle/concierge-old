@@ -17,6 +17,7 @@ package main
 
 import (
 	"github.com/wardle/concierge/cmd"
+	_ "github.com/wardle/concierge/sds"
 )
 
 func main() {

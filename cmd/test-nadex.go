@@ -22,6 +22,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/wardle/concierge/apiv1"
+	"github.com/wardle/concierge/identifiers"
 	"github.com/wardle/concierge/nadex"
 	"google.golang.org/protobuf/encoding/protojson"
 )
@@ -39,9 +40,9 @@ var testNadexCmd = &cobra.Command{
 			Password: args[1],
 			Fake:     false,
 		}
-		p, err := nadex.GetPractitioner(context.Background(), &apiv1.PractitionerRequest{
-			System:   "wales.nhs.uk",
-			Username: args[2],
+		p, err := nadex.GetPractitioner(context.Background(), &apiv1.Identifier{
+			System: identifiers.CymruUserID,
+			Value:  args[2],
 		})
 		if err != nil {
 			log.Fatal(err)

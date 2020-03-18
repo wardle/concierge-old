@@ -1,13 +1,38 @@
 package empi
 
-import "github.com/wardle/concierge/apiv1"
+import (
+	"context"
+	"fmt"
 
-const (
-	odsSystem = "https://fhir.nhs.uk/Id/ods-organization-code"
+	"github.com/wardle/concierge/apiv1"
+	"github.com/wardle/concierge/identifiers"
 )
 
+const (
+	empiNamespaceURI      = "https://fhir.empi.wales.nhs.uk/Id/authority-code" // this is made up
+	authorityNamespaceURI = "https://fhir.eldrix.co.uk/"
+)
+
+func init() {
+	// register identifiers of the tuple empi-authority-code/organisation-code (https://fhir.wales.nhs.uk/empi-authority-code|140)  (for Cardiff and Vale)
+	identifiers.Register("Wales EMPI authority", empiNamespaceURI)
+	// map between above and a standard ODS identifier (https://fhir.nhs.uk/Id/ods-site-code|RWMBV)
+	identifiers.RegisterMapper(empiNamespaceURI, identifiers.ODSSiteCode, func(ctx context.Context, empiID *apiv1.Identifier) (*apiv1.Identifier, error) {
+		if empiID.System != empiNamespaceURI {
+			return nil, fmt.Errorf("expected namespace: %s. got: %s. error:%w", empiNamespaceURI, empiID.System, identifiers.ErrNoMapper)
+		}
+		auth := lookupFromEmpiOrgCode(empiID.Value)
+		if auth == AuthorityUnknown {
+			return nil, fmt.Errorf("unable to map %s|%s to namespace %s", empiID.System, empiID.Value, identifiers.ODSSiteCode)
+		}
+		return auth.ToODSIdentifier(), nil
+	})
+}
+
 // Authority represents the different authorities that issue identifiers
-// These represent identifiers within the "system" https://fhir.nhs.uk/Id/ods-organization-code
+// These ultimately represent identifiers within the "system" https://fhir.nhs.uk/Id/ods-organization-code
+// These are currently hard-coded, but this could easily be switched to a more modular extension registration
+// approach based on runtime configuration
 type Authority int
 
 // List of authority codes for different organisations in Wales
@@ -24,23 +49,8 @@ const (
 	AuthorityCV
 	AuthorityHD
 	AuthorityPowys
-	LastAuthority
+	lastAuthority
 )
-
-var protobufCodes = []apiv1.CymruEmpiRequest_Authority{
-	apiv1.CymruEmpiRequest_UNKNOWN,
-	apiv1.CymruEmpiRequest_NHS_NUMBER,
-	apiv1.CymruEmpiRequest_UNKNOWN,
-	apiv1.CymruEmpiRequest_ANEURIN_BEVAN,
-	apiv1.CymruEmpiRequest_SWANSEA,
-	apiv1.CymruEmpiRequest_BCU_CENTRAL,
-	apiv1.CymruEmpiRequest_BCU_MAELOR,
-	apiv1.CymruEmpiRequest_BCU_WEST,
-	apiv1.CymruEmpiRequest_CWM_TAF,
-	apiv1.CymruEmpiRequest_CARDIFF_AND_VALE,
-	apiv1.CymruEmpiRequest_HYWEL_DDA,
-	apiv1.CymruEmpiRequest_POWYS,
-}
 
 // ValidateIdentifier applies the authorities' formatting rules to validate and sanitise
 // the identifier provided.
@@ -53,41 +63,87 @@ func (a Authority) ValidateIdentifier(id string) (bool, string) {
 	return true, id
 }
 
-func (a Authority) authorityCode() string {
-	if a > LastAuthority {
+func (a Authority) empiOrganisationCode() string {
+	if a > lastAuthority {
 		return ""
 	}
-	return authorityCodes[a]
+	return empiOrgCodes[a]
 }
 
-func (a Authority) hospitalCode() string {
-	if a > LastAuthority {
+func (a Authority) odsHospitalCode() string {
+	if a > lastAuthority {
 		return ""
 	}
 	return hospitalCodes[a]
 }
 func (a Authority) typeCode() string {
-	if a > LastAuthority {
+	if a > lastAuthority {
 		return ""
 	}
 	return authorityTypes[a]
 }
 
-var authorityCodes = [...]string{
-	"",
-	"NHS", // NHS number
-	"100", // internal EMPI identifier - ephemeral identifier
-	"139", // AB
-	"108", // ABM
-	"109", //BCUCentral
-	"110", //BCUMaelor
-	"111", //BCUWest
-	"126", //CT
-	"140", //CAV
-	"149", //HD
-	"170", //Powys
+// ToODSIdentifier converts the authority into a proper Identifier based on ODS code
+func (a Authority) ToODSIdentifier() *apiv1.Identifier {
+	return &apiv1.Identifier{
+		System: identifiers.ODSCode,
+		Value:  a.odsHospitalCode(),
+	}
 }
 
+// ToURI returns the URI for this authority
+func (a Authority) ToURI() string {
+	if a > lastAuthority {
+		return ""
+	}
+	return uris[a]
+}
+
+// empiOrgCodes are the internal (proprietary) codes given to authorities within the Welsh EMPI
+var empiOrgCodes = [...]string{
+	"",
+	"NHS", // NHS number
+	"100", // internal EMPI identifier - this authority provides on ephemeral identifiers
+	"139", // Aneurin Bevan (AB)
+	"108", // Abertawe Bro Morgannwg (ABM)
+	"109", // Betsi Cadwalader Central (BCUCentral)
+	"110", // BCUMaelor
+	"111", // BCUWest
+	"126", // Cwm Taf (CT)
+	"140", // Cardiff and Vale (CAV)
+	"149", // Hywel Dda (HD)
+	"170", // Powys
+}
+
+// Supported identifier systems
+const (
+	CymruEmpiURI      = "https://fhir.wales.nhs.uk/Id/empi-number"            // ephemeral EMPI identifier
+	CardiffAndValeURI = "https://fhir.cardiff.wales.nhs.uk/Id/pas-identifier" // CAV PMS identifier
+	SwanseaBayURI     = "https://fhir.swansea.wales.nhs.uk/Id/pas-identifier"
+	CwmTafURI         = "https://fhir.cwmtaf.wales.nhs.uk/Id/pas-identifier"
+	AneurinBevanURI   = "https://fhir.aneurinbevan.nhs.uk/Id/pas-identifier"
+	HywelDdaURI       = "https://fhir.hyweldda.wales.nhs.uk/Id/pas-identifier"
+	BetsiCentralURI   = "https://fhir.betsicentral.wales.nhs.uk/Id/pas-identifier"
+	BetsiMaelorURI    = "https://fhir.betsimaelor.wales.nhs.uk/Id/pas-identifier"
+	BetsiWestURI      = "https://fhir.betsiwest.wales.nhs.uk/Id/pas-identifier"
+)
+
+var uris = [...]string{
+	"",
+	identifiers.NHSNumber,
+	CymruEmpiURI,
+	AneurinBevanURI,
+	SwanseaBayURI,
+	BetsiCentralURI,
+	BetsiMaelorURI,
+	BetsiWestURI,
+	CwmTafURI,
+	CardiffAndValeURI,
+	HywelDdaURI,
+	"", // don't thnk powys has a PAS!
+}
+
+// hospitalCodes provide ODS organisation codes
 var hospitalCodes = [...]string{
 	"",
 	"NHS",
@@ -101,6 +157,21 @@ var hospitalCodes = [...]string{
 	"RWMBV", // UHW
 	"",
 	"",
+}
+var empiOrgLookup = make(map[string]Authority)
+var hospitalLookup = make(map[string]Authority)
+var uriLookup = make(map[string]Authority)
+
+func init() {
+	for i, code := range empiOrgCodes {
+		empiOrgLookup[code] = Authority(i)
+	}
+	for i, code := range hospitalCodes {
+		hospitalLookup[code] = Authority(i)
+	}
+	for i, uri := range uris {
+		uriLookup[uri] = Authority(i)
+	}
 }
 
 var authorityTypes = [...]string{
@@ -118,14 +189,16 @@ var authorityTypes = [...]string{
 	"PI",
 }
 
-// LookupAuthority looks up an authority via a code
-func LookupAuthority(system string, identifier string) Authority {
-	if system == "" || system == odsSystem {
-		for i, a := range authorityCodes {
-			if a == identifier {
-				return Authority(i)
-			}
-		}
+func lookupFromEmpiOrgCode(identifier string) Authority {
+	if a, ok := empiOrgLookup[identifier]; ok {
+		return a
+	}
+	return AuthorityUnknown
+}
+
+func lookupFromOdsHospital(identifier string) Authority {
+	if a, ok := hospitalLookup[identifier]; ok {
+		return a
 	}
 	return AuthorityUnknown
 }

@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 
 	"net/url"
 	"strings"
@@ -91,18 +92,18 @@ func (ep Endpoint) Name() string {
 }
 
 // Invoke invokes a simple request on the endpoint for the specified authority and identifier
-func Invoke(endpointURL string, processingID string, authorityCode string, identifier string) {
+func Invoke(endpointURL string, processingID string, empiOrgCode string, identifier string) {
 	ctx := context.Background()
-	auth := LookupAuthority(odsSystem, authorityCode)
+	auth := lookupFromEmpiOrgCode(empiOrgCode)
 	if auth == AuthorityUnknown {
-		log.Fatalf("unsupported authority: %s", authorityCode)
+		log.Fatalf("empi: unsupported authority: %s", empiOrgCode)
 	}
 	pt, err := performRequest(ctx, endpointURL, processingID, auth, identifier)
 	if err != nil {
 		log.Fatal(err)
 	}
 	if pt == nil {
-		log.Printf("Patient %s/%s not found", authorityCode, identifier)
+		log.Printf("empi: patient %s/%s not found", empiOrgCode, identifier)
 		return
 	}
 	fmt.Print(protojson.Format(pt))
@@ -117,10 +118,13 @@ type App struct {
 	TimeoutSeconds int
 }
 
-var _ apiv1.WalesEMPIServer = (*App)(nil)
+// ResolveIdentifier provides an identifier/value resolution service
+func (app *App) ResolveIdentifier(ctx context.Context, id *apiv1.Identifier) (proto.Message, error) {
+	return app.GetEMPIRequest(ctx, id)
+}
 
-// GetEMPIRequest fetches a patient using an identifier code, with authority optional and defaulting to NHS number
-func (app *App) GetEMPIRequest(ctx context.Context, req *apiv1.CymruEmpiRequest) (*apiv1.Patient, error) {
+// GetEMPIRequest fetches a patient matching the identifier specified
+func (app *App) GetEMPIRequest(ctx context.Context, req *apiv1.Identifier) (*apiv1.Patient, error) {
 	var email string
 	if headers, ok := metadata.FromIncomingContext(ctx); ok {
 		emails := headers["from"]
@@ -128,47 +132,46 @@ func (app *App) GetEMPIRequest(ctx context.Context, req *apiv1.CymruEmpiRequest)
 			email = emails[0]
 		}
 	}
-	if req.Authority == apiv1.CymruEmpiRequest_UNKNOWN {
-		req.Authority = apiv1.CymruEmpiRequest_NHS_NUMBER
+	authority, ok := uriLookup[req.System]
+	if !ok {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid authority: %s", req.System)
 	}
-	authorityID := apiv1.CymruEmpiRequest_Authority_value[req.Authority.String()]
-	if authorityID == 0 || authorityID >= LastAuthority {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid authority: %s", req.Authority)
-	}
-	// we have a 1:1 map between protobuf defined authorities and our list of authorities
-	authorityCode := authorityCodes[authorityID]
-	log.Printf("empi request from '%s' for %s/%s - mapped to %d (%s)", email, req.Authority, req.Identifier, authorityID, authorityCode)
+	empiCode := authority.empiOrganisationCode()
+	log.Printf("empi: request from '%s' for %s/%s - mapped to %d (%s)", email, req.System, req.Value, authority, empiCode)
 
-	return app.GetRawEMPIRequest(ctx, &apiv1.RawCymruEmpiRequest{
-		Authority:  authorityCodes[authorityID],
-		Identifier: req.Identifier,
+	if empiCode == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "unsupported authority: %s (%s)", req.System, authority)
+	}
+	return app.GetInternalEMPIRequest(ctx, &apiv1.Identifier{
+		System: authority.empiOrganisationCode(),
+		Value:  req.Value,
 	})
 }
 
-// GetRawEMPIRequest fetches a patient using raw authority and identifier codes
-func (app *App) GetRawEMPIRequest(ctx context.Context, req *apiv1.RawCymruEmpiRequest) (*apiv1.Patient, error) {
+// GetInternalEMPIRequest fetches a patient using raw authority and identifier codes
+func (app *App) GetInternalEMPIRequest(ctx context.Context, req *apiv1.Identifier) (*apiv1.Patient, error) {
 	start := time.Now()
-	key := req.Authority + "/" + req.Identifier
+	key := req.System + "/" + req.Value
 	pt, found := app.getCache(key)
 	if found {
-		log.Printf("serving request for %s/%s from cache in %s", req.Authority, req.Identifier, time.Since(start))
+		log.Printf("empi: serving request for %s/%s from cache in %s", req.System, req.Value, time.Since(start))
 		return pt, nil
 	}
-	auth := LookupAuthority(odsSystem, req.Authority)
-	if auth == AuthorityUnknown {
-		log.Printf("unsupported authority: %s", req.Authority)
-		return nil, status.Errorf(codes.InvalidArgument, "unsupported authority: %s", req.Authority)
+	authority := lookupFromEmpiOrgCode(req.System)
+	if authority == AuthorityUnknown {
+		log.Printf("empi: unsupported authority: %s", req.System)
+		return nil, status.Errorf(codes.InvalidArgument, "unsupported authority: %s", req.System)
 	}
 	var valid bool
-	if valid, req.Identifier = auth.ValidateIdentifier(req.Identifier); !valid {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid %s number: %s", authorityCodes[auth], req.Identifier)
+	if valid, req.Value = authority.ValidateIdentifier(req.Value); !valid {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid %s number: %s", req.System, req.Value)
 	}
 	if app.Fake {
-		log.Printf("returning fake result for %s/%s", req.Authority, req.Identifier)
-		return performFake(auth, req.Identifier)
+		log.Printf("empi: returning fake result for %s/%s", req.System, req.Value)
+		return performFake(authority, req.Value)
 	}
 	ctx, cancelFunc := context.WithTimeout(ctx, time.Duration(app.TimeoutSeconds)*time.Second)
-	pt, err := performRequest(ctx, app.EndpointURL, app.Endpoint.ProcessingID(), auth, req.Identifier)
+	pt, err := performRequest(ctx, app.EndpointURL, app.Endpoint.ProcessingID(), authority, req.Value)
 	cancelFunc()
 	if err != nil {
 		if urlError, ok := err.(*url.Error); ok {
@@ -179,9 +182,9 @@ func (app *App) GetRawEMPIRequest(ctx context.Context, req *apiv1.RawCymruEmpiRe
 		return nil, err
 	}
 	if pt == nil {
-		return nil, status.Errorf(codes.NotFound, "patient %s/%s not found", req.Authority, req.Identifier)
+		return nil, status.Errorf(codes.NotFound, "patient %s/%s not found", req.System, req.Value)
 	}
-	log.Printf("response for %s: %s", req.GetIdentifier(), protojson.MarshalOptions{}.Format(pt))
+	log.Printf("empi: response for %s: %s", req.Value, protojson.MarshalOptions{}.Format(pt))
 	return pt, nil
 }
 
@@ -217,7 +220,7 @@ func performFake(authority Authority, identifier string) (*apiv1.Patient, error)
 		GeneralPractitioner: "G9342400",
 		Identifiers: []*apiv1.Identifier{
 			&apiv1.Identifier{
-				System: authorityCodes[authority],
+				System: authority.empiOrganisationCode(),
 				Value:  identifier,
 			},
 			&apiv1.Identifier{
@@ -225,7 +228,7 @@ func performFake(authority Authority, identifier string) (*apiv1.Patient, error)
 				Value:  "M1147907",
 			},
 			&apiv1.Identifier{
-				System: "RWMBV",
+				System: CardiffAndValeURI,
 				Value:  "X234567",
 			},
 		},
@@ -272,7 +275,7 @@ func performRequest(context context.Context, endpointURL string, processingID st
 	}
 	defer resp.Body.Close()
 	var e envelope
-	log.Printf("response (%s): %v", time.Since(start), string(body))
+	log.Printf("empi: response (%s): %v", time.Since(start), string(body))
 	err = xml.Unmarshal(body, &e)
 	if err != nil {
 		return nil, err
@@ -302,8 +305,8 @@ func NewIdentifierRequest(identifier string, authority Authority, sender string,
 	now := time.Now().Format(layout)
 	data := IdentifierRequest{
 		Identifier:           identifier,
-		Authority:            authorityCodes[authority],
-		AuthorityType:        authorityTypes[authority],
+		Authority:            authority.empiOrganisationCode(),
+		AuthorityType:        authority.typeCode(),
 		SendingApplication:   sender,
 		SendingFacility:      sender,
 		ReceivingApplication: receiver,
@@ -316,7 +319,7 @@ func NewIdentifierRequest(identifier string, authority Authority, sender string,
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("request: %+v", data)
+	log.Printf("empi request: %+v", data)
 	var buf bytes.Buffer
 	if err := t.Execute(&buf, data); err != nil {
 		return nil, err
@@ -415,8 +418,6 @@ func (e *envelope) generalPractitioner() string {
 	return e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PD1.PD14.XCN1.Text
 }
 
-// TODO: fix identifiers to use system based on new ODS identifier system
-// NHS Digital (England) define identifier as https://fhir.nhs.uk/Id/ods-organization-code and ODS code
 func (e *envelope) identifiers() []*apiv1.Identifier {
 	result := make([]*apiv1.Identifier, 0)
 	ids := e.Body.InvokePatientDemographicsQueryResponse.RSPK21.RSPK21QUERYRESPONSE.PID.PID3
@@ -425,8 +426,8 @@ func (e *envelope) identifiers() []*apiv1.Identifier {
 		identifier := id.CX1.Text
 		if authority != "" && identifier != "" {
 			system := authority
-			if a := LookupAuthority(odsSystem, authority); hospitalCodes[a] != "" {
-				system = hospitalCodes[a]
+			if a := lookupFromEmpiOrgCode(system); a.ToURI() != "" {
+				system = a.ToURI()
 			}
 			result = append(result, &apiv1.Identifier{
 				System: system,

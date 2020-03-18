@@ -6,9 +6,13 @@ import (
 	"log"
 	"strings"
 
+	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"github.com/wardle/concierge/apiv1"
+	"github.com/wardle/concierge/identifiers"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"gopkg.in/jcmturner/gokrb5.v7/client"
 	"gopkg.in/jcmturner/gokrb5.v7/config"
 	auth "gopkg.in/korylprince/go-ad-auth.v2"
@@ -36,14 +40,58 @@ nhs.uk = CYMRU.NHS.UK
 `
 )
 
-// App reflects the NADEX server application
+// App reflects the NADEX server application, providing user services for NHS Wales
 type App struct {
 	Username string
 	Password string
 	Fake     bool
 }
 
-func (app App) GetPractitioner(ctx context.Context, r *apiv1.PractitionerRequest) (*apiv1.Practitioner, error) {
+var _ apiv1.PractitionerDirectoryServer = (*App)(nil)
+
+// RegisterServer registers this server
+func (app *App) RegisterServer(s *grpc.Server) {
+	apiv1.RegisterPractitionerDirectoryServer(s, app)
+}
+
+// RegisterHTTPProxy registers this as a reverse HTTP proxy
+func (app *App) RegisterHTTPProxy(ctx context.Context, mux *runtime.ServeMux, endpoint string, opts []grpc.DialOption) error {
+	return apiv1.RegisterPractitionerDirectoryHandlerFromEndpoint(ctx, mux, endpoint, opts)
+}
+
+// SearchPractitioner permits a search for a practitioner
+// this currently only supports search by username!
+// TODO: implement search by name
+func (app *App) SearchPractitioner(r *apiv1.PractitionerSearchRequest, s apiv1.PractitionerDirectory_SearchPractitionerServer) error {
+	if r.GetSystem() != identifiers.CymruUserID {
+		return status.Errorf(codes.InvalidArgument, "practitioner search for namespace '%s' not supported", r.GetSystem())
+	}
+	if r.GetFirstName() != "" || r.GetLastName() != "" {
+		return status.Errorf(codes.Unimplemented, "practitioner search by name not implemented yet")
+	}
+	if r.GetUsername() != "" {
+		p, err := app.GetPractitioner(s.Context(), &apiv1.Identifier{System: r.GetSystem(), Value: r.GetUsername()})
+		if err != nil {
+			return err
+		}
+		if err := s.Send(p); err != nil {
+			return err
+		}
+		return nil
+	}
+	return status.Errorf(codes.InvalidArgument, "no search parameters specified")
+}
+
+// ResolvePractitioner provides identifier resolution for the CYMRU USER namespace (see identifiers.CymruUserID)
+func (app *App) ResolvePractitioner(ctx context.Context, id *apiv1.Identifier) (proto.Message, error) {
+	return app.GetPractitioner(ctx, id)
+}
+
+// GetPractitioner returns the specified practitioner
+func (app *App) GetPractitioner(ctx context.Context, r *apiv1.Identifier) (*apiv1.Practitioner, error) {
+	if r.System != identifiers.CymruUserID {
+		return nil, fmt.Errorf("unsupported identifier system: %s. supported: %s", r.System, identifiers.CymruUserID)
+	}
 	if app.Fake {
 		return app.GetFakePractitioner(ctx, r)
 	}
@@ -77,13 +125,13 @@ func (app App) GetPractitioner(ctx context.Context, r *apiv1.PractitionerRequest
 		return nil, err
 	}
 	if !success {
-		return nil, status.Errorf(codes.Unavailable, "failed to login for user %s", app.Username)
+		return nil, status.Errorf(codes.Unauthenticated, "failed to login for user %s", app.Username)
 	}
 	// search for a user
 	searchRequest := ldap.NewSearchRequest(
 		"dc=cymru,dc=nhs,dc=uk", // The base dn to search
 		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-		fmt.Sprintf("(&(objectClass=User)(sAMAccountName=%s))", r.Username), // The filter to apply
+		fmt.Sprintf("(&(objectClass=User)(sAMAccountName=%s))", r.Value), // The filter to apply
 		// A list attributes to retrieve
 		[]string{
 			"sAMAccountName",       // username
@@ -111,10 +159,10 @@ func (app App) GetPractitioner(ctx context.Context, r *apiv1.PractitionerRequest
 		return nil, err
 	}
 	if len(sr.Entries) == 0 {
-		return nil, status.Errorf(codes.NotFound, "user not found: %s", r.Username)
+		return nil, status.Errorf(codes.NotFound, "user not found: %s", r.Value)
 	}
 	if len(sr.Entries) > 1 {
-		return nil, status.Errorf(codes.InvalidArgument, "more than one match for username %s", r.Username)
+		return nil, status.Errorf(codes.InvalidArgument, "more than one match for username %s", r.Value)
 	}
 	entry := sr.Entries[0]
 	entry.PrettyPrint(0)
@@ -125,17 +173,17 @@ func (app App) GetPractitioner(ctx context.Context, r *apiv1.PractitionerRequest
 	if n := entry.GetAttributeValue("telephoneNumber"); n != "" {
 		phones = append(phones, &apiv1.Telephone{Number: n, Description: "Office"})
 	}
-	identifiers := make([]*apiv1.Identifier, 0)
-	identifiers = append(identifiers, &apiv1.Identifier{
-		System: "cymru.nhs.uk", // TODO: need to check unique system identifier for user directory
+	ids := make([]*apiv1.Identifier, 0)
+	ids = append(ids, &apiv1.Identifier{
+		System: identifiers.CymruUserID,
 		Value:  entry.GetAttributeValue("sAMAccountName"),
 	})
 	//  bizarrely, the active directory uses postOfficeBox to store professional registration information
 	if profReg := entry.GetAttributeValue("postOfficeBox"); profReg != "" && len(profReg) > 4 {
 		switch {
 		case strings.HasPrefix(profReg, "GMC:"):
-			identifiers = append(identifiers, &apiv1.Identifier{
-				System: "https://fhir.hl7.org.uk/Id/gmc-number", // see https://github.com/HL7-UK/System-Identifiers
+			ids = append(ids, &apiv1.Identifier{
+				System: identifiers.GMCNumber,
 				Value:  strings.TrimSpace(profReg[4:]),
 			})
 		}
@@ -153,17 +201,17 @@ func (app App) GetPractitioner(ctx context.Context, r *apiv1.PractitionerRequest
 			entry.GetAttributeValue("mail"),
 		},
 		Telephones:  phones,
-		Identifiers: identifiers,
+		Identifiers: ids,
 	}
 	if title := entry.GetAttributeValue("title"); title != "" {
 		user.Roles = []*apiv1.PractitionerRole{
-			&apiv1.PractitionerRole{JobTitle: title},
+			&apiv1.PractitionerRole{Role: &apiv1.Role{JobTitle: title}},
 		}
 	}
 	return user, nil
 }
 
-func (app App) GetFakePractitioner(ctx context.Context, r *apiv1.PractitionerRequest) (*apiv1.Practitioner, error) {
+func (app App) GetFakePractitioner(ctx context.Context, r *apiv1.Identifier) (*apiv1.Practitioner, error) {
 	p := &apiv1.Practitioner{
 		Active: true,
 		Emails: []string{"wibble@wobble.org"},
@@ -171,9 +219,12 @@ func (app App) GetFakePractitioner(ctx context.Context, r *apiv1.PractitionerReq
 			&apiv1.HumanName{Given: "Fred", Family: "Flintstone", Prefixes: []string{"Mr"}},
 		},
 		Roles: []*apiv1.PractitionerRole{
-			&apiv1.PractitionerRole{JobTitle: "Consultant Neurologist"},
+			&apiv1.PractitionerRole{Role: &apiv1.Role{JobTitle: "Consultant Neurologist"}},
 		},
-		Identifiers: []*apiv1.Identifier{&apiv1.Identifier{Value: r.GetUsername()}},
+		Identifiers: []*apiv1.Identifier{
+			&apiv1.Identifier{System: identifiers.CymruUserID, Value: r.GetValue()},
+			&apiv1.Identifier{System: identifiers.GMCNumber, Value: "4624000"},
+		},
 	}
 	return p, nil
 }

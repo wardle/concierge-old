@@ -12,7 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/wardle/concierge/apiv1"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
@@ -25,6 +24,14 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// Provider represents a server provider - providing GRPC server implementation
+type Provider interface {
+	// RegisterServer will be called to register your GRPC service
+	RegisterServer(sd *grpc.Server)
+	// RegisterHTTPProxy will be called to register your GRPC HTTP reverse proxy
+	RegisterHTTPProxy(ctx context.Context, mux *runtime.ServeMux, endpoint string, opts []grpc.DialOption) error
+}
+
 // Server represents a combined gRPC and REST server
 // Generate self-signed local development certificates using:
 // openssl req -newkey rsa:2048 -nodes -keyout domain.key -x509 -days 365 -out domain.crt
@@ -32,9 +39,7 @@ import (
 //
 type Server struct {
 	Options
-	// modules supported by this server:
-	apiv1.WalesEMPIServer
-	apiv1.PractitionerDirectoryServer
+	providers map[string]Provider
 }
 
 // Options defines the options for a server.
@@ -43,6 +48,15 @@ type Options struct {
 	RESTPort int
 	CertFile string
 	KeyFile  string
+}
+
+// Register registers a provider with the server.
+// This should not be called once server is running.
+func (sv *Server) Register(name string, p Provider) {
+	if sv.providers == nil {
+		sv.providers = make(map[string]Provider)
+	}
+	sv.providers[name] = p
 }
 
 // RunServer runs a GRPC and a gateway REST server concurrently
@@ -78,15 +92,11 @@ func (sv *Server) RunServer() error {
 		}
 		grpcServer = grpc.NewServer(opts...)
 		health.RegisterHealthServer(grpcServer, sv)
-		if sv.WalesEMPIServer != nil {
-			log.Printf("registering Wales EMPI module: %+v", sv.WalesEMPIServer)
-			apiv1.RegisterWalesEMPIServer(grpcServer, sv.WalesEMPIServer)
+		for name, provider := range sv.providers {
+			provider.RegisterServer(grpcServer)
+			log.Printf("server: registered '%s' service", name)
 		}
-		if sv.PractitionerDirectoryServer != nil {
-			log.Print("registering practitioner directory service")
-			apiv1.RegisterPractitionerDirectoryServer(grpcServer, sv.PractitionerDirectoryServer)
-		}
-		log.Printf("gRPC Listening on %s\n", lis.Addr().String())
+		log.Printf("server: gRPC Listening on %s\n", lis.Addr().String())
 		return grpcServer.Serve(lis)
 	})
 
@@ -109,14 +119,11 @@ func (sv *Server) RunServer() error {
 			runtime.WithIncomingHeaderMatcher(headerMatcher),                                    // handle Accept-Language
 			runtime.WithMarshalerOption(runtime.MIMEWildcard, &runtime.JSONPb{OrigName: false}), // handle JSON camelcase
 		)
-		if sv.WalesEMPIServer != nil {
-			if err := apiv1.RegisterWalesEMPIHandlerFromEndpoint(ctx, mux, clientAddr, dialOpts); err != nil {
-				return fmt.Errorf("failed to create empi http reverse proxy: %w", err)
-			}
-		}
-		if sv.PractitionerDirectoryServer != nil {
-			if err := apiv1.RegisterPractitionerDirectoryHandlerFromEndpoint(ctx, mux, clientAddr, dialOpts); err != nil {
-				return fmt.Errorf("failed to create practitioner directory http reverse proxy: %w", err)
+		for name, provider := range sv.providers {
+			if err := provider.RegisterHTTPProxy(ctx, mux, clientAddr, dialOpts); err != nil {
+				log.Printf("server: failed to register reverse http proxy for '%s':%s", name, err)
+			} else {
+				log.Printf("server: registered reverse http proxy for '%s'", name)
 			}
 		}
 		httpServer = &http.Server{
@@ -126,16 +133,16 @@ func (sv *Server) RunServer() error {
 			WriteTimeout: 10 * time.Second,
 		}
 		if sv.Options.CertFile == "" || sv.Options.KeyFile == "" {
-			log.Printf("warning: http listening on %s (no certificate or key specified)", addr)
+			log.Printf("server: http listening on %s (not using https: no certificate or key specified)", addr)
 			return httpServer.ListenAndServe()
 		}
-		log.Printf("https listening on %s\n", addr)
+		log.Printf("server: https listening on %s\n", addr)
 		return httpServer.ListenAndServeTLS(sv.Options.CertFile, sv.Options.KeyFile)
 	})
 
 	select {
 	case sig := <-sigs:
-		log.Printf("received signal: %v", sig)
+		log.Printf("server: received signal: %v", sig)
 		break
 	case <-ctx.Done():
 		break
@@ -150,7 +157,7 @@ func (sv *Server) RunServer() error {
 	}
 	if grpcServer != nil {
 		grpcServer.GracefulStop()
-		log.Print("grpc server shutdown")
+		log.Print("server: grpc server shutdown")
 	}
 	return g.Wait()
 }
@@ -185,8 +192,6 @@ func loggingInterceptor(ctx context.Context, req interface{}, info *grpc.UnarySe
 	resp, err := handler(ctx, req)
 	if err != nil {
 		log.Printf("error: %s : %s", sb.String(), err)
-	} else {
-		log.Printf("success: %s", sb.String())
 	}
 	return resp, err
 }

@@ -20,7 +20,6 @@ package cmd
 
 import (
 	"errors"
-	"fmt"
 	"log"
 
 	"github.com/spf13/cobra"
@@ -37,9 +36,6 @@ concierge test empi 7253698428`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 || len(args) > 3 {
 			return errors.New("requires an an optional authority code and a mandatory identifier argument")
-		}
-		if len(args) == 2 && empi.LookupAuthority("https://fhir.nhs.uk/Id/ods-organization-code", args[0]) == empi.AuthorityUnknown {
-			return fmt.Errorf("unsupported authority code: %s", args[0])
 		}
 		return nil
 	},

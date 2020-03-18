@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/wardle/concierge/empi"
+	"github.com/wardle/concierge/identifiers"
 	"github.com/wardle/concierge/nadex"
 	"github.com/wardle/concierge/server"
 )
@@ -18,28 +19,7 @@ var serveCmd = &cobra.Command{
 	Short: "Starts a server (gRPC and REST)",
 	Long:  `Starts a server (gRPC and REST)`,
 	Run: func(cmd *cobra.Command, args []string) {
-		empiApp := new(empi.App)
-		endpoint := empi.LookupEndpoint(viper.GetString("empi-endpoint"))
-		if endpoint == empi.UnknownEndpoint {
-			log.Fatalf("unknown endpoint: %v", cmd.Flag("empi-endpoint"))
-		}
-		empiApp.Endpoint = endpoint
-		if endpointURL := viper.GetString("empi-endpoint-url"); endpointURL != "" {
-			empiApp.EndpointURL = endpointURL
-		} else {
-			empiApp.EndpointURL = endpoint.URL()
-		}
-		empiApp.Fake = viper.GetBool("fake")
-		empiApp.TimeoutSeconds = viper.GetInt("empi-timeout-seconds")
-		cacheMinutes := viper.GetInt("empi-cache-minutes")
-		if cacheMinutes != 0 {
-			empiApp.Cache = cache.New(time.Duration(cacheMinutes)*time.Minute, time.Duration(cacheMinutes*2)*time.Minute)
-		}
-		log.Printf("empi configuration: cache:%dm timeout:%ds EMPI endpoint:(%s)%s", cacheMinutes, empiApp.TimeoutSeconds, endpoint.Name(), empiApp.EndpointURL)
-		nadexApp := new(nadex.App)
-		nadexApp.Username = viper.GetString("nadex-username") // this will be fallback username/password to use
-		nadexApp.Password = viper.GetString("nadex-password")
-		nadexApp.Fake = viper.GetBool("fake")
+
 		server := server.Server{
 			Options: server.Options{
 				RESTPort: viper.GetInt("port-http"),
@@ -47,14 +27,63 @@ var serveCmd = &cobra.Command{
 				CertFile: viper.GetString("cert"),
 				KeyFile:  viper.GetString("key"),
 			},
-			WalesEMPIServer:             empiApp,
-			PractitionerDirectoryServer: nadexApp,
 		}
-		log.Printf("starting server: rpc-port:%d http-port:%d", server.Options.RPCPort, server.Options.RESTPort)
+		// generic servers: these are high-level and distinct from underlying implementations
+		server.Register("identifier", &identifiers.Server{})
+
+		// specific servers: these provide an abstraction over a specific back-end service.
+		// in the future, these endpoints will be deprecated in favour of complete abstraction,
+		// but we will still need to support identifier resolution and mapping using this mechanism
+
+		ep := walesEmpiServer()
+		//server.Register("wales-empi", ep) 		-- temporarily unnecessary as can use identifier lookup instead
+		identifiers.RegisterResolver(identifiers.NHSNumber, ep.ResolveIdentifier)
+		identifiers.RegisterResolver(empi.CardiffAndValeURI, ep.ResolveIdentifier)
+		identifiers.RegisterResolver(empi.AneurinBevanURI, ep.ResolveIdentifier)
+		identifiers.RegisterResolver(empi.CwmTafURI, ep.ResolveIdentifier)
+		identifiers.RegisterResolver(empi.SwanseaBayURI, ep.ResolveIdentifier)
+
+		np := nadexServer()
+		server.Register("nadex", np)
+		identifiers.RegisterResolver(identifiers.CymruUserID, np.ResolvePractitioner)
+
+		// start server
+		log.Printf("cmd: starting server: rpc-port:%d http-port:%d", server.Options.RPCPort, server.Options.RESTPort)
 		if err := server.RunServer(); err != nil {
 			log.Fatal(err)
 		}
 	},
+}
+
+func nadexServer() *nadex.App {
+	nadexApp := new(nadex.App)
+	nadexApp.Username = viper.GetString("nadex-username") // this will be fallback username/password to use
+	nadexApp.Password = viper.GetString("nadex-password")
+	nadexApp.Fake = viper.GetBool("fake")
+	return nadexApp
+}
+
+func walesEmpiServer() *empi.App {
+	empiApp := new(empi.App)
+	empiEndpoint := viper.GetString("empi-endpoint")
+	endpoint := empi.LookupEndpoint(empiEndpoint)
+	if endpoint == empi.UnknownEndpoint {
+		log.Fatalf("unknown endpoint: %v", empiEndpoint)
+	}
+	empiApp.Endpoint = endpoint
+	if endpointURL := viper.GetString("empi-endpoint-url"); endpointURL != "" {
+		empiApp.EndpointURL = endpointURL
+	} else {
+		empiApp.EndpointURL = endpoint.URL()
+	}
+	empiApp.Fake = viper.GetBool("fake")
+	empiApp.TimeoutSeconds = viper.GetInt("empi-timeout-seconds")
+	cacheMinutes := viper.GetInt("empi-cache-minutes")
+	if cacheMinutes != 0 {
+		empiApp.Cache = cache.New(time.Duration(cacheMinutes)*time.Minute, time.Duration(cacheMinutes*2)*time.Minute)
+	}
+	log.Printf("empi configuration: cache:%dm timeout:%ds endpoint:(%s)%s", cacheMinutes, empiApp.TimeoutSeconds, endpoint.Name(), empiApp.EndpointURL)
+	return empiApp
 }
 
 func init() {
