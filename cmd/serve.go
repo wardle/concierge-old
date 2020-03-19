@@ -20,7 +20,7 @@ var serveCmd = &cobra.Command{
 	Long:  `Starts a server (gRPC and REST)`,
 	Run: func(cmd *cobra.Command, args []string) {
 
-		server := server.Server{
+		sv := server.Server{
 			Options: server.Options{
 				RESTPort: viper.GetInt("port-http"),
 				RPCPort:  viper.GetInt("port-grpc"),
@@ -29,7 +29,7 @@ var serveCmd = &cobra.Command{
 			},
 		}
 		// generic servers: these are high-level and distinct from underlying implementations
-		server.Register("identifier", &identifiers.Server{})
+		sv.Register("identifier", &identifiers.Server{})
 
 		// specific servers: these provide an abstraction over a specific back-end service.
 		// in the future, these endpoints will be deprecated in favour of complete abstraction,
@@ -38,18 +38,25 @@ var serveCmd = &cobra.Command{
 		ep := walesEmpiServer()
 		//server.Register("wales-empi", ep) 		-- temporarily unnecessary as can use identifier lookup instead
 		identifiers.RegisterResolver(identifiers.NHSNumber, ep.ResolveIdentifier)
-		identifiers.RegisterResolver(empi.CardiffAndValeURI, ep.ResolveIdentifier)
-		identifiers.RegisterResolver(empi.AneurinBevanURI, ep.ResolveIdentifier)
-		identifiers.RegisterResolver(empi.CwmTafURI, ep.ResolveIdentifier)
-		identifiers.RegisterResolver(empi.SwanseaBayURI, ep.ResolveIdentifier)
+		identifiers.RegisterResolver(identifiers.CardiffAndValeURI, ep.ResolveIdentifier)
+		identifiers.RegisterResolver(identifiers.AneurinBevanURI, ep.ResolveIdentifier)
+		identifiers.RegisterResolver(identifiers.CwmTafURI, ep.ResolveIdentifier)
+		identifiers.RegisterResolver(identifiers.SwanseaBayURI, ep.ResolveIdentifier)
 
 		np := nadexServer()
-		server.Register("nadex", np)
+		sv.Register("nadex", np)
 		identifiers.RegisterResolver(identifiers.CymruUserID, np.ResolvePractitioner)
 
+		auth, err := server.NewAuthenticationServerWithTemporaryKey() // TODO: option to turn off
+		if err != nil {
+			log.Fatalf("cmd: failed to start authentication server: %s", err)
+		}
+		sv.Auth = auth
+		sv.Register("auth", auth)
+
 		// start server
-		log.Printf("cmd: starting server: rpc-port:%d http-port:%d", server.Options.RPCPort, server.Options.RESTPort)
-		if err := server.RunServer(); err != nil {
+		log.Printf("cmd: starting server: rpc-port:%d http-port:%d", sv.Options.RPCPort, sv.Options.RESTPort)
+		if err := sv.RunServer(); err != nil {
 			log.Fatal(err)
 		}
 	},

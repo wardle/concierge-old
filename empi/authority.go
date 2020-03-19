@@ -115,31 +115,18 @@ var empiOrgCodes = [...]string{
 	"170", // Powys
 }
 
-// Supported identifier systems
-const (
-	CymruEmpiURI      = "https://fhir.wales.nhs.uk/Id/empi-number"            // ephemeral EMPI identifier
-	CardiffAndValeURI = "https://fhir.cardiff.wales.nhs.uk/Id/pas-identifier" // CAV PMS identifier
-	SwanseaBayURI     = "https://fhir.swansea.wales.nhs.uk/Id/pas-identifier"
-	CwmTafURI         = "https://fhir.cwmtaf.wales.nhs.uk/Id/pas-identifier"
-	AneurinBevanURI   = "https://fhir.aneurinbevan.nhs.uk/Id/pas-identifier"
-	HywelDdaURI       = "https://fhir.hyweldda.wales.nhs.uk/Id/pas-identifier"
-	BetsiCentralURI   = "https://fhir.betsicentral.wales.nhs.uk/Id/pas-identifier"
-	BetsiMaelorURI    = "https://fhir.betsimaelor.wales.nhs.uk/Id/pas-identifier"
-	BetsiWestURI      = "https://fhir.betsiwest.wales.nhs.uk/Id/pas-identifier"
-)
-
 var uris = [...]string{
 	"",
 	identifiers.NHSNumber,
-	CymruEmpiURI,
-	AneurinBevanURI,
-	SwanseaBayURI,
-	BetsiCentralURI,
-	BetsiMaelorURI,
-	BetsiWestURI,
-	CwmTafURI,
-	CardiffAndValeURI,
-	HywelDdaURI,
+	identifiers.CymruEmpiURI,
+	identifiers.AneurinBevanURI,
+	identifiers.SwanseaBayURI,
+	identifiers.BetsiCentralURI,
+	identifiers.BetsiMaelorURI,
+	identifiers.BetsiWestURI,
+	identifiers.CwmTafURI,
+	identifiers.CardiffAndValeURI,
+	identifiers.HywelDdaURI,
 	"", // don't thnk powys has a PAS!
 }
 

@@ -36,6 +36,7 @@ type Provider interface {
 //
 type Server struct {
 	Options
+	Auth      *Auth
 	providers map[string]Provider
 }
 
@@ -77,7 +78,11 @@ func (sv *Server) RunServer() error {
 			return fmt.Errorf("failed to initialize TCP listen: %v", err)
 		}
 		defer lis.Close()
-		opts := []grpc.ServerOption{}
+		opts := make([]grpc.ServerOption, 0)
+		if sv.Auth != nil {
+			opts = append(opts, grpc.UnaryInterceptor(sv.unaryAuthInterceptor))
+			opts = append(opts, grpc.StreamInterceptor(sv.streamAuthInterceptor))
+		}
 		if sv.Options.CertFile != "" && sv.Options.KeyFile != "" {
 			creds, err := credentials.NewServerTLSFromFile(sv.Options.CertFile, sv.Options.KeyFile)
 			if err != nil {

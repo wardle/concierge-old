@@ -3,6 +3,10 @@
 // Roles.go provides resolution services for the SDS job name.
 // See https://fhir.nhs.uk/STU3/CodeSystem/CareConnect-SDSJobRoleName-1
 //
+// This is a demonstrator implementation to show how to provide open access to "proprietary"
+// value sets and then potentially map into other identifier systems when possible.
+// The point is that client applications really shouldn't need to know all about the millions
+// of value sets but instead use a core 'lingua franca' of meaningful codes.
 package sds
 
 import (
@@ -18,17 +22,12 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-const (
-	// SDSJobRoleNameURI represents the URI for this system of identifiers
-	SDSJobRoleNameURI = "https://fhir.nhs.uk/STU3/CodeSystem/CareConnect-SDSJobRoleName-1"
-)
-
 var codes = make(map[string]*apiv1.Role)
 var jobTitles = make(map[string]string)
 
 func init() {
-	identifiers.Register("SDS Job Roles", SDSJobRoleNameURI)
-	identifiers.RegisterResolver(SDSJobRoleNameURI, roleResolver)
+	identifiers.Register("SDS Job Roles", identifiers.SDSJobRoleNameURI)
+	identifiers.RegisterResolver(identifiers.SDSJobRoleNameURI, roleResolver)
 	// split our SDS data into something manageable
 	for _, entry := range strings.Split(sdsData, "\n") {
 		words := strings.Fields(entry)
@@ -53,8 +52,8 @@ func init() {
 		sdsReverseMapping[sct] = sds
 	}
 	// register our identifier mappers
-	identifiers.RegisterMapper(SDSJobRoleNameURI, identifiers.SNOMEDCT, mapSDStoSNOMED)
-	identifiers.RegisterMapper(identifiers.SNOMEDCT, SDSJobRoleNameURI, mapSNOMEDtoSDS)
+	identifiers.RegisterMapper(identifiers.SDSJobRoleNameURI, identifiers.SNOMEDCT, mapSDStoSNOMED)
+	identifiers.RegisterMapper(identifiers.SNOMEDCT, identifiers.SDSJobRoleNameURI, mapSNOMEDtoSDS)
 }
 
 // roleResolver provides a resolution service for the SDS role value set
@@ -93,7 +92,7 @@ func mapSNOMEDtoSDS(ctx context.Context, id *apiv1.Identifier) (*apiv1.Identifie
 	log.Printf("trying to crossmap from snomed identifier: %v", sctID)
 	if sds, found := sdsReverseMapping[uint64(sctID)]; found {
 		mapped := &apiv1.Identifier{
-			System: SDSJobRoleNameURI,
+			System: identifiers.SDSJobRoleNameURI,
 			Value:  sds,
 		}
 		log.Printf("sds: mapped from %s|%s to %s|%s", id.System, id.Value, mapped.System, mapped.Value)

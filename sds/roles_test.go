@@ -21,7 +21,7 @@ var tests = []struct {
 func TestRoleResolution(t *testing.T) {
 	for _, test := range tests {
 		o, err := identifiers.Resolve(context.Background(), &apiv1.Identifier{
-			System: SDSJobRoleNameURI,
+			System: identifiers.SDSJobRoleNameURI,
 			Value:  test.code,
 		})
 		if err != nil {

@@ -14,7 +14,6 @@ import (
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -25,6 +24,8 @@ import (
 	"time"
 
 	"github.com/wardle/concierge/apiv1"
+	"github.com/wardle/concierge/identifiers"
+	"github.com/wardle/concierge/server"
 
 	"github.com/patrickmn/go-cache"
 )
@@ -106,19 +107,13 @@ func (app *App) ResolveIdentifier(ctx context.Context, id *apiv1.Identifier) (pr
 
 // GetEMPIRequest fetches a patient matching the identifier specified
 func (app *App) GetEMPIRequest(ctx context.Context, req *apiv1.Identifier) (*apiv1.Patient, error) {
-	var email string
-	if headers, ok := metadata.FromIncomingContext(ctx); ok {
-		emails := headers["from"]
-		if len(emails) > 0 {
-			email = emails[0]
-		}
-	}
+	ucd := server.GetContextData(ctx)
 	authority, ok := uriLookup[req.System]
 	if !ok {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid authority: %s", req.System)
 	}
 	empiCode := authority.empiOrganisationCode()
-	log.Printf("empi: request from '%s' for %s/%s - mapped to %d (%s)", email, req.System, req.Value, authority, empiCode)
+	log.Printf("empi: request from '%s|%s' for %s/%s - mapped to authority:%d (%s)", ucd.GetAuthenticatedUser().GetSystem(), ucd.GetAuthenticatedUser().GetValue(), req.System, req.Value, authority, empiCode)
 
 	if empiCode == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "unsupported authority: %s (%s)", req.System, authority)
@@ -213,7 +208,7 @@ func performFake(authority Authority, identifier string) (*apiv1.Patient, error)
 				Value:  "M1147907",
 			},
 			&apiv1.Identifier{
-				System: CardiffAndValeURI,
+				System: identifiers.CardiffAndValeURI,
 				Value:  "X234567",
 			},
 		},

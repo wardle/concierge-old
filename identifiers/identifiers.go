@@ -214,20 +214,3 @@ func init() {
 	// NHS number verification status - should be SNOMED CT and not a (semi-)proprietary value set
 	Register("NHS number verification status", NHSNumberVerificationStatus)
 }
-
-// list of built-in supported systems (although extendable at runtime and by importing other packages)
-const (
-	SNOMEDCT    = "http://snomed.info/sct"
-	ReadV2      = "http://read.info/readv2"
-	ReadV3      = "http://read.info/ctv3"
-	GMCNumber   = "https://fhir.hl7.org.uk/Id/gmc-number"
-	NMCPIN      = "https://fhir.hl7.org.uk/Id/nmc-pin" // TODO: has anyone decided URIs for other authorities in UK?
-	SDSUserID   = "https://fhir.nhs.uk/Id/sds-user-id"
-	CymruUserID = "https://fhir.nhs.uk/Id/cymru-user-id" // TODO: I've made this one up; do we have one for Wales?
-	NHSNumber   = "https://fhir.nhs.uk/Id/nhs-number"
-	ODSCode     = "https://fhir.nhs.uk/Id/ods-organization-code"
-	ODSSiteCode = "https://fhir.nhs.uk/Id/ods-site-code"
-
-	// NHS UK / NHS Digital URIs for specific value sets  (arguably all better as SCT identifiers)
-	NHSNumberVerificationStatus = "https://fhir.hl7.org.uk/CareConnect-NHSNumberVerificationStatus-1"
-)
