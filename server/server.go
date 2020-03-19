@@ -177,12 +177,12 @@ func headerMatcher(headerName string) (mdName string, ok bool) {
 func (sv *Server) Check(ctx context.Context, r *health.HealthCheckRequest) (*health.HealthCheckResponse, error) {
 	response := new(health.HealthCheckResponse)
 	response.Status = health.HealthCheckResponse_SERVING
-	log.Printf("service health check received: %s", response.Status)
+	log.Printf("server: health check received: %s", response.Status)
 	return response, nil
 }
 
 // Watch is a streaming health check to issue changes in health status
 func (sv *Server) Watch(r *health.HealthCheckRequest, w health.Health_WatchServer) error {
-	log.Printf("service health watch request received but not implemented: %+v", r)
+	log.Printf("server: health watch request received but not implemented: %+v", r)
 	return status.Error(codes.Unimplemented, "grpc health watch operation not implemented")
 }
