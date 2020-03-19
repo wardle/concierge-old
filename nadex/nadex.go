@@ -233,13 +233,16 @@ func (app App) GetFakePractitioner(ctx context.Context, r *apiv1.Identifier) (*a
 	return p, nil
 }
 
-// Authenticate is a simple password check against the active directory
-func Authenticate(username string, password string) (bool, error) {
+// Authenticate authenticates a user against the NHS Wales' directory service
+func Authenticate(id *apiv1.Identifier, credential string) (bool, error) {
+	if id.GetSystem() != identifiers.CymruUserID {
+		return false, fmt.Errorf("nadex: unsupported uri: %s", id.GetSystem())
+	}
 	cfg, err := config.NewConfigFromString(krbConfig)
 	if err != nil {
 		return false, err
 	}
-	cl := client.NewClientWithPassword(username, "CYMRU.NHS.UK", password, cfg, client.DisablePAFXFAST(true))
+	cl := client.NewClientWithPassword(id.GetValue(), "CYMRU.NHS.UK", credential, cfg, client.DisablePAFXFAST(true))
 	err = cl.Login()
 	if err != nil {
 		return false, err

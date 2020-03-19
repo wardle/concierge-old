@@ -1,16 +1,20 @@
 package cmd
 
 import (
+	"fmt"
 	"log"
 	"time"
 
 	"github.com/patrickmn/go-cache"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/wardle/concierge/apiv1"
 	"github.com/wardle/concierge/empi"
 	"github.com/wardle/concierge/identifiers"
 	"github.com/wardle/concierge/nadex"
 	"github.com/wardle/concierge/server"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // serveCmd represents the serve command
@@ -47,16 +51,18 @@ var serveCmd = &cobra.Command{
 		sv.Register("nadex", np)
 		identifiers.RegisterResolver(identifiers.CymruUserID, np.ResolvePractitioner)
 
+		auth, err := server.NewAuthenticationServerWithTemporaryKey()
 		if viper.GetBool("no-auth") {
 			log.Printf("cmd: warning: running without API authentication or authenticator endpoint")
 		} else {
-			auth, err := server.NewAuthenticationServerWithTemporaryKey()
 			if err != nil {
 				log.Fatalf("cmd: failed to start authentication server: %s", err)
 			}
 			sv.Auth = auth
-			sv.Register("auth", auth)
 		}
+		auth.RegisterAuthProvider(identifiers.ConciergeServiceUser, serviceAuthenticator)
+		auth.RegisterAuthProvider(identifiers.CymruUserID, nadex.Authenticate)
+		sv.Register("auth", auth)
 
 		// start server
 		log.Printf("cmd: starting server: rpc-port:%d http-port:%d", sv.Options.RPCPort, sv.Options.RESTPort)
@@ -125,4 +131,19 @@ func init() {
 	viper.BindPFlag("nadex-password", serveCmd.PersistentFlags().Lookup("nadex-password"))
 	serveCmd.PersistentFlags().Bool("no-auth", false, "Turn off API authentication")
 	viper.BindPFlag("no-auth", serveCmd.PersistentFlags().Lookup("no-auth"))
+}
+
+// stupid authenticator for concierge service users - currently validates credentials stupidly
+func serviceAuthenticator(id *apiv1.Identifier, credential string) (bool, error) {
+	log.Printf("danger: stupid authenticator implementation called for '%s|%s'", id.GetSystem(), id.GetValue())
+	if id.GetSystem() != identifiers.ConciergeServiceUser {
+		return false, fmt.Errorf("cannot authenticate for users in namespace uri '%s'", id.GetSystem())
+	}
+	if id.GetValue() == credential {
+		log.Printf("auth: successful (but stupid) login for service user '%s'", id.GetValue())
+		return true, nil
+	}
+	log.Printf("auth: failed login for service user '%s' : invalid credentials", id.GetValue())
+	return false, status.Errorf(codes.PermissionDenied, "invalid user key and secret key")
+
 }

@@ -29,6 +29,7 @@ var (
 // Auth is an authentication server
 type Auth struct {
 	jwtPrivatekey *rsa.PrivateKey
+	authProviders map[string]func(id *apiv1.Identifier, credential string) (bool, error)
 }
 
 // NewAuthenticationServer creates a new authentication server that can issue JWT tokens
@@ -41,7 +42,9 @@ func NewAuthenticationServer(rsaPrivateKey string) (*Auth, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error parsing jwt private key: %w", err)
 	}
-	return &Auth{jwtPrivatekey: parsedKey}, nil
+	return &Auth{
+		jwtPrivatekey: parsedKey,
+		authProviders: make(map[string]func(id *apiv1.Identifier, credential string) (bool, error))}, nil
 }
 
 // NewAuthenticationServerWithTemporaryKey creates a new authentication server using an emphemeral private/public key pair
@@ -49,6 +52,7 @@ func NewAuthenticationServerWithTemporaryKey() (*Auth, error) {
 	auth := new(Auth)
 	var err error
 	auth.jwtPrivatekey, err = rsa.GenerateKey(rand.Reader, 2048)
+	auth.authProviders = make(map[string]func(id *apiv1.Identifier, credential string) (bool, error))
 	return auth, err
 }
 
@@ -64,6 +68,15 @@ func (auth *Auth) RegisterHTTPProxy(ctx context.Context, mux *runtime.ServeMux, 
 	return apiv1.RegisterAuthenticatorHandlerFromEndpoint(ctx, mux, endpoint, opts)
 }
 
+// RegisterAuthProvider registers an authentication provider for the given
+func (auth *Auth) RegisterAuthProvider(uri string, f func(id *apiv1.Identifier, credential string) (bool, error)) {
+	if _, exists := auth.authProviders[uri]; exists {
+		panic("authentication provider already registered for uri: " + uri)
+	}
+	auth.authProviders[uri] = f
+	log.Printf("auth: registered authentication provider for namespace uri: '%s'", uri)
+}
+
 // Login performs an authentication.
 // A service user login is currently performed using a user key and secret key, but could itself be from a third-party
 // token in the future, depending on the namespace chosen.
@@ -72,20 +85,25 @@ func (auth *Auth) Login(ctx context.Context, r *apiv1.LoginRequest) (*apiv1.Logi
 		return nil, status.Errorf(codes.Internal, "no private key specified for signing jwt token")
 	}
 	log.Printf("auth: login attempt: %s|%s", r.GetUser().GetSystem(), r.GetUser().GetValue())
-	if r.GetUser().GetSystem() == identifiers.ConciergeServiceUser {
-		if authenticateServiceUser(r.GetUser().GetValue(), r.GetPassword()) == false { // TODO: use a better check ;)
-			log.Printf("auth: failed login for service user '%s' : invalid credentials", r.GetUser().Value)
-			return nil, status.Errorf(codes.PermissionDenied, "invalid user key and secret key")
-		}
-		log.Printf("auth: successful login for service user '%s'", r.GetUser().GetValue())
-		ss, err := auth.generateToken(r.GetUser(), time.Hour*72)
+	if ap, found := auth.authProviders[r.GetUser().GetSystem()]; found {
+		success, err := ap(r.GetUser(), r.GetPassword())
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "could not generate token: %s", err)
+			log.Printf("auth: failed to authenticate: %s", err)
+			return nil, status.Errorf(codes.Unauthenticated, "failed to authenticate: %s", err)
 		}
-		return &apiv1.LoginResponse{Token: ss}, nil
+		if success {
+			ss, err := auth.generateToken(r.GetUser(), time.Hour*72)
+			if err != nil {
+				log.Printf("auth: failed to generate token: %s", err)
+				return nil, status.Errorf(codes.Internal, "could not generate token: %s", err)
+			}
+			return &apiv1.LoginResponse{Token: ss}, nil
+		}
+		log.Printf("auth: invalid credentials for '%s|%s'", r.GetUser().GetSystem(), r.GetUser().GetValue())
+		return nil, status.Errorf(codes.Unauthenticated, "invalid credentials")
 	}
-
-	return nil, status.Errorf(codes.Unimplemented, "auth: authentication of non-service users not yet implemented")
+	log.Printf("auth: failed login attempt: unsupported namespace: %s", r.GetUser().GetSystem())
+	return nil, status.Errorf(codes.Unauthenticated, "auth: unable to provide authentication for namespace uri '%s'", r.GetUser().GetSystem())
 }
 
 // Refresh refreshes an authenitcation token
