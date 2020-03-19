@@ -175,13 +175,18 @@ func (ucd *UserContextData) GetTokenExpiresAt() time.Time {
 	return ucd.tokenExpiresAt
 }
 
+var noAuthEndpoints = map[string]struct{}{
+	"/apiv1.Authenticator/Login":   struct{}{},
+	"/grpc.health.v1.Health/Check": struct{}{},
+}
+
 // unaryAuthInterceptor provides an interceptor that ensures we have an authenticated user
 func (sv *Server) unaryAuthInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	ctx, err := sv.Auth.addContextData(ctx)
 	if err == nil {
 		return handler(ctx, req)
 	}
-	if info.FullMethod == "/apiv1.Authenticator/Login" { // ignore authentication errors if we're logging in
+	if _, found := noAuthEndpoints[info.FullMethod]; found {
 		return handler(ctx, req)
 	}
 	log.Printf("server: unauthenticated call to '%s': %s", info.FullMethod, err)
