@@ -47,12 +47,16 @@ var serveCmd = &cobra.Command{
 		sv.Register("nadex", np)
 		identifiers.RegisterResolver(identifiers.CymruUserID, np.ResolvePractitioner)
 
-		auth, err := server.NewAuthenticationServerWithTemporaryKey() // TODO: option to turn off
-		if err != nil {
-			log.Fatalf("cmd: failed to start authentication server: %s", err)
+		if viper.GetBool("no-auth") {
+			log.Printf("cmd: warning: running without API authentication or authenticator endpoint")
+		} else {
+			auth, err := server.NewAuthenticationServerWithTemporaryKey()
+			if err != nil {
+				log.Fatalf("cmd: failed to start authentication server: %s", err)
+			}
+			sv.Auth = auth
+			sv.Register("auth", auth)
 		}
-		sv.Auth = auth
-		sv.Register("auth", auth)
 
 		// start server
 		log.Printf("cmd: starting server: rpc-port:%d http-port:%d", sv.Options.RPCPort, sv.Options.RESTPort)
@@ -119,4 +123,6 @@ func init() {
 	viper.BindPFlag("nadex-username", serveCmd.PersistentFlags().Lookup("nadex-username"))
 	serveCmd.PersistentFlags().String("nadex-password", "", "Password for directory lookups")
 	viper.BindPFlag("nadex-password", serveCmd.PersistentFlags().Lookup("nadex-password"))
+	serveCmd.PersistentFlags().Bool("no-auth", false, "Turn off API authentication")
+	viper.BindPFlag("no-auth", serveCmd.PersistentFlags().Lookup("no-auth"))
 }
