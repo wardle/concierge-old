@@ -214,7 +214,7 @@ func (app *App) GetPractitioner(ctx context.Context, r *apiv1.Identifier) (*apiv
 }
 
 // GetFakePractitioner returns a fake practitioner, useful in testing without a live backend service
-func (app App) GetFakePractitioner(ctx context.Context, r *apiv1.Identifier) (*apiv1.Practitioner, error) {
+func (app *App) GetFakePractitioner(ctx context.Context, r *apiv1.Identifier) (*apiv1.Practitioner, error) {
 	p := &apiv1.Practitioner{
 		Active: true,
 		Emails: []string{"wibble@wobble.org"},
@@ -234,7 +234,7 @@ func (app App) GetFakePractitioner(ctx context.Context, r *apiv1.Identifier) (*a
 }
 
 // Authenticate authenticates a user against the NHS Wales' directory service
-func Authenticate(id *apiv1.Identifier, credential string) (bool, error) {
+func (app *App) Authenticate(id *apiv1.Identifier, credential string) (bool, error) {
 	if id.GetSystem() != identifiers.CymruUserID {
 		return false, fmt.Errorf("nadex: unsupported uri: %s", id.GetSystem())
 	}

@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	empiNamespaceURI      = "https://fhir.empi.wales.nhs.uk/Id/authority-code" // this is made up
-	authorityNamespaceURI = "https://fhir.eldrix.co.uk/"
+	empiNamespaceURI      = "https://fhir.empi.wales.nhs.uk/Id/authority-code"      // this is made up
+	authorityNamespaceURI = "https://fhir.eldrix.co.uk/concierge/Id/authority-code" // internal code
 )
 
 func init() {
@@ -84,6 +84,8 @@ func (a Authority) typeCode() string {
 }
 
 // ToODSIdentifier converts the authority into a proper Identifier based on ODS code
+// TODO: once using the new ODS microservice, check that it shouldn't be ODS site code
+// TODO: plan migration to new ODS coding system (ANANA)
 func (a Authority) ToODSIdentifier() *apiv1.Identifier {
 	return &apiv1.Identifier{
 		System: identifiers.ODSCode,

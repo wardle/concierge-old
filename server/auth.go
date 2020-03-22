@@ -13,8 +13,10 @@ import (
 
 	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
+	"github.com/sethvargo/go-password/password"
 	"github.com/wardle/concierge/apiv1"
 	"github.com/wardle/concierge/identifiers"
+	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -28,8 +30,15 @@ var (
 
 // Auth is an authentication server
 type Auth struct {
-	jwtPrivatekey *rsa.PrivateKey
-	authProviders map[string]func(id *apiv1.Identifier, credential string) (bool, error)
+	jwtPrivatekey   *rsa.PrivateKey
+	authProviders   map[string]AuthProvider
+	serviceAccounts map[string]struct{}
+}
+
+// AuthProvider is a mechanism for plugging in modular authentication schemes
+// for different namespaces.
+type AuthProvider interface {
+	Authenticate(id *apiv1.Identifier, credential string) (bool, error)
 }
 
 // NewAuthenticationServer creates a new authentication server that can issue JWT tokens
@@ -44,7 +53,8 @@ func NewAuthenticationServer(rsaPrivateKey string) (*Auth, error) {
 	}
 	return &Auth{
 		jwtPrivatekey: parsedKey,
-		authProviders: make(map[string]func(id *apiv1.Identifier, credential string) (bool, error))}, nil
+		authProviders: make(map[string]AuthProvider),
+	}, nil
 }
 
 // NewAuthenticationServerWithTemporaryKey creates a new authentication server using an emphemeral private/public key pair
@@ -52,7 +62,8 @@ func NewAuthenticationServerWithTemporaryKey() (*Auth, error) {
 	auth := new(Auth)
 	var err error
 	auth.jwtPrivatekey, err = rsa.GenerateKey(rand.Reader, 2048)
-	auth.authProviders = make(map[string]func(id *apiv1.Identifier, credential string) (bool, error))
+	auth.authProviders = make(map[string]AuthProvider)
+	auth.serviceAccounts = make(map[string]struct{})
 	return auth, err
 }
 
@@ -69,60 +80,82 @@ func (auth *Auth) RegisterHTTPProxy(ctx context.Context, mux *runtime.ServeMux, 
 }
 
 // RegisterAuthProvider registers an authentication provider for the given
-func (auth *Auth) RegisterAuthProvider(uri string, f func(id *apiv1.Identifier, credential string) (bool, error)) {
+func (auth *Auth) RegisterAuthProvider(uri string, name string, ap AuthProvider, service bool) {
 	if _, exists := auth.authProviders[uri]; exists {
 		panic("authentication provider already registered for uri: " + uri)
 	}
-	auth.authProviders[uri] = f
-	log.Printf("auth: registered authentication provider for namespace uri: '%s'", uri)
+	auth.authProviders[uri] = ap
+	if service {
+		auth.serviceAccounts[uri] = struct{}{}
+	}
+	log.Printf("auth: registered authentication provider for namespace uri: '%s': %s", uri, name)
 }
 
+var defaultTokenDuration = 5 * time.Minute
+var serviceAccountTokenDuration = 72 * time.Hour
+
 // Login performs an authentication.
+// User account login can only be performed with an already logged in service account
 // A service user login is currently performed using a user key and secret key, but could itself be from a third-party
 // token in the future, depending on the namespace chosen.
 func (auth *Auth) Login(ctx context.Context, r *apiv1.LoginRequest) (*apiv1.LoginResponse, error) {
 	if auth.jwtPrivatekey == nil {
 		return nil, status.Errorf(codes.Internal, "no private key specified for signing jwt token")
 	}
-	log.Printf("auth: login attempt: %s|%s", r.GetUser().GetSystem(), r.GetUser().GetValue())
-	if ap, found := auth.authProviders[r.GetUser().GetSystem()]; found {
-		success, err := ap(r.GetUser(), r.GetPassword())
-		if err != nil {
-			log.Printf("auth: failed to authenticate: %s", err)
-			return nil, status.Errorf(codes.Unauthenticated, "failed to authenticate: %s", err)
+	if _, found := auth.authProviders[r.GetUser().GetSystem()]; !found {
+		log.Printf("auth: failed login attempt: unsupported namespace: '%s|%s'", r.GetUser().GetSystem(), r.GetUser().GetValue())
+		return nil, status.Errorf(codes.Unauthenticated, "auth: unable to provide authentication for namespace uri '%s'", r.GetUser().GetSystem())
+	}
+	ap := auth.authProviders[r.GetUser().GetSystem()]
+	log.Printf("auth: login attempt for '%s|%s'", r.GetUser().GetSystem(), r.GetUser().GetValue())
+	if _, isService := auth.serviceAccounts[r.GetUser().GetSystem()]; !isService {
+		ucd := GetContextData(ctx) // if ucd is nil, the next statement will still return false
+		if _, isService = auth.serviceAccounts[ucd.GetAuthenticatedUser().GetSystem()]; !isService {
+			log.Printf("auth: attempt to login without service account")
+			return nil, status.Errorf(codes.Unauthenticated, "need service account login before logging in using normal user account")
 		}
-		if success {
-			ss, err := auth.generateToken(r.GetUser(), time.Hour*72)
-			if err != nil {
-				log.Printf("auth: failed to generate token: %s", err)
-				return nil, status.Errorf(codes.Internal, "could not generate token: %s", err)
-			}
-			return &apiv1.LoginResponse{Token: ss}, nil
-		}
+	}
+	success, err := ap.Authenticate(r.GetUser(), r.GetPassword())
+	if err != nil {
+		log.Printf("auth: failed to authenticate: %s", err)
+		return nil, status.Errorf(codes.Unauthenticated, "failed to authenticate: %s", err)
+	}
+	if !success {
 		log.Printf("auth: invalid credentials for '%s|%s'", r.GetUser().GetSystem(), r.GetUser().GetValue())
 		return nil, status.Errorf(codes.Unauthenticated, "invalid credentials")
 	}
-	log.Printf("auth: failed login attempt: unsupported namespace: %s", r.GetUser().GetSystem())
-	return nil, status.Errorf(codes.Unauthenticated, "auth: unable to provide authentication for namespace uri '%s'", r.GetUser().GetSystem())
+	tokenDuration := defaultTokenDuration
+	if r.GetUser().GetSystem() == identifiers.ConciergeServiceUser {
+		tokenDuration = serviceAccountTokenDuration
+	}
+	log.Printf("auth: generated authentication token for %s|%s: %v", r.GetUser().GetSystem(), r.GetUser().GetValue(), tokenDuration)
+	ss, err := auth.generateToken(r.GetUser(), tokenDuration)
+	if err != nil {
+		log.Printf("auth: failed to generate token: %s", err)
+		return nil, status.Errorf(codes.Internal, "could not generate token: %s", err)
+	}
+	return &apiv1.LoginResponse{Token: ss}, nil
+
 }
 
 // Refresh refreshes an authenitcation token
 func (auth *Auth) Refresh(ctx context.Context, r *apiv1.TokenRefreshRequest) (*apiv1.LoginResponse, error) {
 	ucd := GetContextData(ctx)
 	// do we really need to refresh token? send old one back if there is plenty of time
-	if ucd.GetTokenExpiresAt().After(time.Now().Add(5 * time.Minute)) {
-		log.Printf("auth: existing token for %s|%s expires %v so no need to refresh yet", ucd.GetAuthenticatedUser().GetSystem(), ucd.GetAuthenticatedUser().GetValue(), ucd.GetTokenExpiresAt())
+	remaining := ucd.GetTokenExpiresAt().Sub(time.Now())
+	if remaining > 5*time.Minute {
+		log.Printf("auth: re-issuing still active token for '%s|%s' expiry:%v ", ucd.GetAuthenticatedUser().GetSystem(), ucd.GetAuthenticatedUser().GetValue(), ucd.GetTokenExpiresAt())
 		return &apiv1.LoginResponse{Token: ucd.token}, nil
 	}
-	tokenDuration := 5 * time.Minute
+	tokenDuration := defaultTokenDuration
 	if ucd.authenticatedUser.GetSystem() == identifiers.ConciergeServiceUser {
-		tokenDuration = 72 * time.Hour
+		tokenDuration = serviceAccountTokenDuration
 	}
 	ss, err := auth.generateToken(ucd.authenticatedUser, tokenDuration)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "could not generate token: %s", err)
 	}
-	log.Printf("auth: generated refreshed authentication token for %s|%s", ucd.authenticatedUser.GetSystem(), ucd.authenticatedUser.GetValue())
+	log.Printf("auth: generated refreshed authentication token for %s|%s (%v)", ucd.authenticatedUser.GetSystem(), ucd.authenticatedUser.GetValue(), tokenDuration)
 	return &apiv1.LoginResponse{Token: ss}, nil
 }
 
@@ -160,6 +193,7 @@ func (auth *Auth) parseToken(token string) (*UserContextData, error) {
 		cd.tokenExpiresAt = time.Unix(claims.ExpiresAt, 0)
 		return cd, nil
 	}
+	log.Printf("auth: invalid token: %s", err)
 	return nil, err
 }
 
@@ -243,9 +277,16 @@ func GetContextData(ctx context.Context) *UserContextData {
 	return nil
 }
 
-func authenticateServiceUser(userKey string, secretKey string) bool {
-	if userKey == secretKey {
-		return true
+// GenerateCredentials generates random credentials
+// TODO: make it work a bit like https://docs.aws.amazon.com/cli/latest/reference/secretsmanager/get-random-password.html
+func GenerateCredentials() (string, string, error) {
+	p, err := password.Generate(64, 10, 0, false, true)
+	if err != nil {
+		return "", "", err
 	}
-	return false
+	hash, err := bcrypt.GenerateFromPassword([]byte(p), bcrypt.DefaultCost)
+	if err != nil {
+		return "", "", err
+	}
+	return p, string(hash), nil
 }

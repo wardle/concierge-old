@@ -35,12 +35,24 @@ var testNadexCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(3),
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("testNadex called")
-		nadex := nadex.App{
+		n := nadex.App{
 			Username: args[0],
 			Password: args[1],
 			Fake:     false,
 		}
-		p, err := nadex.GetPractitioner(context.Background(), &apiv1.Identifier{
+		// Attempt a simple authentication
+		success, err := n.Authenticate(&apiv1.Identifier{
+			System: identifiers.CymruUserID,
+			Value:  args[0],
+		}, args[1])
+		if err != nil {
+			log.Fatal(err)
+		}
+		if !success {
+			log.Printf("authentication failed: invalid credentials")
+		}
+		// Attempt a user lookup by username
+		p, err := n.GetPractitioner(context.Background(), &apiv1.Identifier{
 			System: identifiers.CymruUserID,
 			Value:  args[2],
 		})
