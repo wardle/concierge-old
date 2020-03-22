@@ -1,6 +1,5 @@
 // Package identifiers provides a mechamism to support the arbitrary mapping and resolution
 // of system/value tuples that act as identifiers (uniform resource identifiers).
-
 package identifiers
 
 import (

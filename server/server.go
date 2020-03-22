@@ -139,7 +139,6 @@ func (sv *Server) RunServer() error {
 		log.Printf("server: https listening on %s\n", addr)
 		return httpServer.ListenAndServeTLS(sv.Options.CertFile, sv.Options.KeyFile)
 	})
-
 	select {
 	case sig := <-sigs:
 		log.Printf("server: received signal: %v", sig)
