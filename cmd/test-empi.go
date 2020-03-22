@@ -33,14 +33,14 @@ import (
 
 // empiCmd is the "concierge test empi" command for simple testing of the EMPI at the command-line
 var empiCmd = &cobra.Command{
-	Use: "empi [authority] <identifier>",
+	Use: "empi [uri] <identifier>",
 	Example: `concierge test empi https://fhir.nhs.uk/Id/nhs-number 7253698428
 concierge test empi https://fhir.nhs.uk/Id/nhs-number 7705820730
 concierge test empi https://fhir.nhs.uk/Id/nhs-number 6145933267
 concierge test empi 7253698428`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 || len(args) > 3 {
-			return errors.New("requires an an optional authority code and a mandatory identifier argument")
+			return errors.New("requires an an optional authority uri and a mandatory identifier argument")
 		}
 		return nil
 	},
