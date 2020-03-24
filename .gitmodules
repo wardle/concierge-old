@@ -1,3 +1,6 @@
 [submodule "protos/concierge-api"]
 	path = protos/concierge-api
 	url = https://github.com/wardle/concierge-api
+[submodule "protos/terminology"]
+	path = protos/terminology
+	url = https://github.com/wardle/terminology

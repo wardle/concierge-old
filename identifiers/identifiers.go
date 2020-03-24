@@ -55,6 +55,7 @@ func RegisterResolver(uri string, f func(ctx context.Context, id *apiv1.Identifi
 		panic("identifiers: register resolver called twice for URI " + uri)
 	}
 	resolvers[uri] = f
+	log.Printf("identifiers: registered resolver for '%s'", uri)
 }
 
 // Resolve attempts to resolve the specified system/value tuple
@@ -81,6 +82,7 @@ func RegisterMapper(fromURI string, toURI string, f func(context.Context, *apiv1
 		panic("identifiers: register mapper called twice for URI " + fromURI)
 	}
 	mappers[key] = f
+	log.Printf("identifiers: registered mapper for '%s'->'%s'", fromURI, toURI)
 }
 
 // Server is the identifier service that offers resolution and mapping of identifiers based on system/value tuples
@@ -88,14 +90,11 @@ type Server struct{}
 
 var _ apiv1.IdentifiersServer = (*Server)(nil)
 
+// Close closes any linked resources
+func (svc *Server) Close() error { return nil }
+
 // RegisterServer registers this server
 func (svc *Server) RegisterServer(s *grpc.Server) {
-	for _, uri := range Resolvers() {
-		log.Printf("identifiers: registered resolver for '%s'", uri)
-	}
-	for from, to := range Mappers() {
-		log.Printf("identifiers: registered mapper for '%s'->'%s'", from, to)
-	}
 	apiv1.RegisterIdentifiersServer(s, svc)
 }
 
