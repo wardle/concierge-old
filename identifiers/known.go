@@ -2,7 +2,13 @@ package identifiers
 
 // list of built-in supported systems (although extendable at runtime and by importing other packages)
 const (
+
+	// generic
+	URI = "urn:ietf:rfc:3986" // general URI (uniform resource identifier)
+
+	// health and care
 	SNOMEDCT    = "http://snomed.info/sct"
+	LOINC       = "http://loinc.org"
 	ReadV2      = "http://read.info/readv2"
 	ReadV3      = "http://read.info/ctv3"
 	GMCNumber   = "https://fhir.hl7.org.uk/Id/gmc-number"
