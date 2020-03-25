@@ -21,6 +21,7 @@ import (
 	"log"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/wardle/concierge/apiv1"
 	"google.golang.org/protobuf/encoding/protojson"
 )
@@ -33,7 +34,6 @@ var resolveCmd = &cobra.Command{
 	Long: `Resolve the value of an arbitrary identifier. 
 
 For example, to test the EMPI resolution service:
-
 concierge resolve https://fhir.nhs.uk/Id/nhs-number 7705820730
 concierge resolve https://fhir.nhs.uk/Id/nhs-number 6145933267
 concierge resolve https://fhir.nhs.uk/Id/nhs-number 7253698428
@@ -44,6 +44,9 @@ concierge resolve https://fhir.nhs.uk/Id/cymru-user-id ma090906
 Other tests:
 concierge resolve http://snomed.info/sct 24700007
 `,
+	PreRun: func(cmd *cobra.Command, args []string) {
+		viper.Set("no-auth", true)
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		my := createServers()
 		my.sv.RegisterAuthenticator(nil) // turn off authentication
