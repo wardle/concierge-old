@@ -48,9 +48,19 @@ func (term *Terminology) Resolve(ctx context.Context, id *apiv1.Identifier) (pro
 	}
 	header := metadata.New(map[string]string{"accept-language": "en-GB"})
 	ctx = metadata.NewOutgoingContext(ctx, header)
-	ec, err := term.client.GetExtendedConcept(ctx, &snomed.SctID{Identifier: sctID.Integer()})
-	if err != nil {
-		return nil, fmt.Errorf("could not resolve SNOMED CT '%s': %w", id.GetValue(), err)
+	if sctID.IsConcept() {
+		ec, err := term.client.GetExtendedConcept(ctx, &snomed.SctID{Identifier: sctID.Integer()})
+		if err != nil {
+			return nil, fmt.Errorf("could not resolve SNOMED CT concept '%d': %w", sctID, err)
+		}
+		return ec, nil
 	}
-	return ec, nil
+	if sctID.IsDescription() {
+		d, err := term.client.GetDescription(ctx, &snomed.SctID{Identifier: sctID.Integer()})
+		if err != nil {
+			return nil, fmt.Errorf("could not resolve SNOMED CT description '%d': %w", sctID, err)
+		}
+		return d, nil
+	}
+	return nil, fmt.Errorf("could not resolve SNOMED CT entity '%d': only concepts and descriptions supported", sctID)
 }
