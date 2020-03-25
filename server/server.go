@@ -27,6 +27,8 @@ type Provider interface {
 	RegisterServer(sd *grpc.Server)
 	// RegisterHTTPProxy will be called to register your GRPC HTTP reverse proxy
 	RegisterHTTPProxy(ctx context.Context, mux *runtime.ServeMux, endpoint string, opts []grpc.DialOption) error
+	// Close closes any resources associated with this provider
+	Close() error
 }
 
 // Server represents a combined gRPC and REST server
@@ -36,8 +38,15 @@ type Provider interface {
 //
 type Server struct {
 	Options
-	Auth      *Auth
+	auth      *Auth
 	providers map[string]Provider
+}
+
+// New creates a new server
+func New(opts Options) *Server {
+	return &Server{
+		Options: opts,
+	}
 }
 
 // Options defines the options for a server.
@@ -48,6 +57,21 @@ type Options struct {
 	KeyFile  string
 }
 
+// Close frees up any associated resources
+func (sv *Server) Close() error {
+	for _, p := range sv.providers {
+		if err := p.Close(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// RegisterAuthenticator turns on server authentication
+func (sv *Server) RegisterAuthenticator(auth *Auth) {
+	sv.auth = auth
+}
+
 // Register registers a provider with the server.
 // This should not be called once server is running.
 func (sv *Server) Register(name string, p Provider) {
@@ -55,6 +79,7 @@ func (sv *Server) Register(name string, p Provider) {
 		sv.providers = make(map[string]Provider)
 	}
 	sv.providers[name] = p
+	log.Printf("server: registered provider: '%s'", name)
 }
 
 // RunServer runs a GRPC and a gateway REST server concurrently
@@ -79,7 +104,7 @@ func (sv *Server) RunServer() error {
 		}
 		defer lis.Close()
 		opts := make([]grpc.ServerOption, 0)
-		if sv.Auth != nil {
+		if sv.auth != nil {
 			opts = append(opts, grpc.UnaryInterceptor(sv.unaryAuthInterceptor))
 			opts = append(opts, grpc.StreamInterceptor(sv.streamAuthInterceptor))
 		}

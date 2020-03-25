@@ -80,7 +80,7 @@ func mapSDStoSNOMED(ctx context.Context, id *apiv1.Identifier) (*apiv1.Identifie
 // TODO: should use SNOMED service to automatically check is type of occupation, and then
 // find the map.
 func mapSNOMEDtoSDS(ctx context.Context, id *apiv1.Identifier) (*apiv1.Identifier, error) {
-	sctID, err := snomed.ParseValidIdentifier(id.GetValue(), true)
+	sctID, err := snomed.ParseAndValidate(id.GetValue())
 	if err != nil {
 		log.Printf("sds: failed to map from SNOMED: invalid identifier: %s", id.Value)
 		return nil, fmt.Errorf("cannot map from SNOMED '%s': %w", id.GetValue(), err)

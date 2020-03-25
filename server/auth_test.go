@@ -14,13 +14,18 @@ func TestServiceLogin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	password, hash, err := GenerateCredentials()
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth.RegisterAuthProvider(identifiers.ConciergeServiceUser, "test-single", NewSingleAuthProvider(hash), true)
 	id := &apiv1.Identifier{
 		System: identifiers.ConciergeServiceUser,
 		Value:  "a123456789",
 	}
 	r, err := auth.Login(context.Background(), &apiv1.LoginRequest{
 		User:     id,
-		Password: "a123456789",
+		Password: password,
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -20,13 +20,12 @@ require (
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/spf13/viper v1.6.2
-	github.com/wardle/go-terminology v1.0.0
+	github.com/wardle/go-terminology v1.0.1-0.20200323224558-afe353dcef5e
 	golang.org/x/crypto v0.0.0-20200317142112-1b76d66859c6
 	golang.org/x/net v0.0.0-20200301022130-244492dfa37a // indirect
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
 	golang.org/x/sys v0.0.0-20200302150141-5c8b2ff67527 // indirect
-	golang.org/x/text v0.3.2 // indirect
-	google.golang.org/genproto v0.0.0-20200317114155-1f3552e48f24
+	google.golang.org/genproto v0.0.0-20200323114720-3f67cca34472
 	google.golang.org/grpc v1.28.0
 	google.golang.org/protobuf v1.20.1
 	gopkg.in/ini.v1 v1.52.0 // indirect

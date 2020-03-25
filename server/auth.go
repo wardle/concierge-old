@@ -79,6 +79,9 @@ func (auth *Auth) RegisterHTTPProxy(ctx context.Context, mux *runtime.ServeMux, 
 	return apiv1.RegisterAuthenticatorHandlerFromEndpoint(ctx, mux, endpoint, opts)
 }
 
+// Close closes any linked resources
+func (auth *Auth) Close() error { return nil }
+
 // RegisterAuthProvider registers an authentication provider for the given
 func (auth *Auth) RegisterAuthProvider(uri string, name string, ap AuthProvider, service bool) {
 	if _, exists := auth.authProviders[uri]; exists {
@@ -234,7 +237,7 @@ var noAuthEndpoints = map[string]struct{}{
 
 // unaryAuthInterceptor provides an interceptor that ensures we have an authenticated user
 func (sv *Server) unaryAuthInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-	ctx, err := sv.Auth.addContextData(ctx)
+	ctx, err := sv.auth.addContextData(ctx)
 	if err == nil {
 		return handler(ctx, req)
 	}
@@ -289,4 +292,20 @@ func GenerateCredentials() (string, string, error) {
 		return "", "", err
 	}
 	return p, string(hash), nil
+}
+
+type singleAuthProvider struct {
+	hash string
+}
+
+// NewSingleAuthProvider creates an authprovider for a static single password
+func NewSingleAuthProvider(hash string) AuthProvider {
+	return &singleAuthProvider{hash: hash}
+}
+
+func (ap *singleAuthProvider) Authenticate(id *apiv1.Identifier, credential string) (bool, error) {
+	if err := bcrypt.CompareHashAndPassword([]byte(ap.hash), []byte(credential)); err != nil {
+		return false, err
+	}
+	return true, nil
 }

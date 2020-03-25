@@ -105,6 +105,9 @@ func (app *App) ResolveIdentifier(ctx context.Context, id *apiv1.Identifier) (pr
 	return app.GetEMPIRequest(ctx, id)
 }
 
+// Close closes any linked resources
+func (app *App) Close() {}
+
 // GetEMPIRequest fetches a patient matching the identifier specified
 func (app *App) GetEMPIRequest(ctx context.Context, req *apiv1.Identifier) (*apiv1.Patient, error) {
 	ucd := server.GetContextData(ctx)

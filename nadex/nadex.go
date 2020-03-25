@@ -59,6 +59,9 @@ func (app *App) RegisterHTTPProxy(ctx context.Context, mux *runtime.ServeMux, en
 	return apiv1.RegisterPractitionerDirectoryHandlerFromEndpoint(ctx, mux, endpoint, opts)
 }
 
+// Close closes any linked resources
+func (app *App) Close() error { return nil }
+
 // SearchPractitioner permits a search for a practitioner
 // this currently only supports search by username!
 // TODO: implement search by name

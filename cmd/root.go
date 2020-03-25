@@ -67,13 +67,33 @@ func Execute() {
 func init() {
 	cobra.OnInitialize(initConfig)
 
-	// Here you will define your flags and configuration settings.
-	// Cobra supports persistent flags, which, if defined here,
-	// will be global for your application.
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.concierge.yaml)")
 
 	rootCmd.PersistentFlags().String("log", "", "Log file to use")
 	viper.BindPFlag("log", rootCmd.PersistentFlags().Lookup("log"))
+
+	rootCmd.PersistentFlags().Bool("fake", false, "Run with fake results")
+	viper.BindPFlag("fake", rootCmd.PersistentFlags().Lookup("fake"))
+
+	// empi configuration
+	rootCmd.PersistentFlags().String("empi-endpoint", "D", "EMPI endpoint - (P)roduction, (T)est or (D)evelopment")
+	viper.BindPFlag("empi-endpoint", rootCmd.PersistentFlags().Lookup("empi-endpoint"))
+	rootCmd.PersistentFlags().String("empi-endpoint-url", "", "URL for EMPI endpoint (if different to default for P/T/D")
+	viper.BindPFlag("empi-endpoint-url", rootCmd.PersistentFlags().Lookup("empi-endpoint-url"))
+	rootCmd.PersistentFlags().Int("empi-timeout-seconds", 2, "Timeout for calls to EMPI backend server endpoint(s)")
+	viper.BindPFlag("empi-timeout-seconds", rootCmd.PersistentFlags().Lookup("empi-timeout-seconds"))
+	rootCmd.PersistentFlags().Int("empi-cache-minutes", 5, "EMPI cache expiration in minutes, 0=no cache")
+	viper.BindPFlag("empi-cache-minutes", rootCmd.PersistentFlags().Lookup("empi-cache-minutes"))
+
+	// nadex configuration
+	rootCmd.PersistentFlags().String("nadex-username", "", "Username for directory lookups")
+	viper.BindPFlag("nadex-username", rootCmd.PersistentFlags().Lookup("nadex-username"))
+	rootCmd.PersistentFlags().String("nadex-password", "", "Password for directory lookups")
+	viper.BindPFlag("nadex-password", rootCmd.PersistentFlags().Lookup("nadex-password"))
+
+	// SNOMED terminology server integration
+	rootCmd.PersistentFlags().String("terminology-addr", "", "gRPC address of terminology server (e.g. localhost:8081")
+	viper.BindPFlag("terminology-addr", rootCmd.PersistentFlags().Lookup("terminology-addr"))
 }
 
 // initConfig reads in config file and ENV variables if set.
