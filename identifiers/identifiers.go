@@ -11,15 +11,13 @@ import (
 	"strings"
 	"sync"
 
-	protov1 "github.com/golang/protobuf/proto"
-	"github.com/golang/protobuf/ptypes"
-	"github.com/golang/protobuf/ptypes/any"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"github.com/wardle/concierge/apiv1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 var (
@@ -55,7 +53,6 @@ func RegisterResolver(uri string, f func(ctx context.Context, id *apiv1.Identifi
 		panic("identifiers: register resolver called twice for URI " + uri)
 	}
 	resolvers[uri] = f
-	log.Printf("identifiers: registered resolver for '%s'", uri)
 }
 
 // Resolve attempts to resolve the specified system/value tuple
@@ -82,7 +79,6 @@ func RegisterMapper(fromURI string, toURI string, f func(context.Context, *apiv1
 		panic("identifiers: register mapper called twice for URI " + fromURI)
 	}
 	mappers[key] = f
-	log.Printf("identifiers: registered mapper for '%s'->'%s'", fromURI, toURI)
 }
 
 // Server is the identifier service that offers resolution and mapping of identifiers based on system/value tuples
@@ -95,6 +91,13 @@ func (svc *Server) Close() error { return nil }
 
 // RegisterServer registers this server
 func (svc *Server) RegisterServer(s *grpc.Server) {
+	for _, resolver := range Resolvers() {
+		log.Printf("identifiers: registered resolver for '%s'", resolver)
+	}
+	for fromURI, toURI := range Mappers() {
+		log.Printf("identifiers: registered mapper for '%s'->'%s'", fromURI, toURI)
+	}
+
 	apiv1.RegisterIdentifiersServer(s, svc)
 }
 
@@ -104,20 +107,24 @@ func (svc *Server) RegisterHTTPProxy(ctx context.Context, mux *runtime.ServeMux,
 }
 
 // GetIdentifier resolves an identifier
-func (svc *Server) GetIdentifier(ctx context.Context, id *apiv1.Identifier) (*any.Any, error) {
+func (svc *Server) GetIdentifier(ctx context.Context, id *apiv1.Identifier) (*anypb.Any, error) {
 	if id.GetSystem() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "identifier: missing parameter: system")
 	}
 	o, err := Resolve(ctx, id)
 	if err != nil {
+		log.Printf("could not resolve %s|%s: %s", id.GetSystem(), id.GetValue(), err)
 		return nil, err
 	}
-	r, err := ptypes.MarshalAny(protov1.MessageV1(o))
+	b, err := proto.Marshal(o)
 	if err != nil {
+		log.Printf("identifiers: could not marshal %s|%s: %s", id.GetSystem(), id.GetValue(), err)
 		return nil, err
 	}
-	r.TypeUrl = strings.Replace(r.TypeUrl, "type.googleapis.com", "concierge.eldrix.com", 1)
-	return r, nil
+	return &anypb.Any{
+		TypeUrl: "concierge.eldrix.com/" + string(o.ProtoReflect().Descriptor().FullName()),
+		Value:   b,
+	}, nil
 }
 
 // MapIdentifier resolves an identifier
