@@ -23,7 +23,7 @@ import (
 	"github.com/wardle/concierge/server"
 )
 
-// authCreateCmd represents the authCreate command
+// authCreateCmd allows generation of service user credentials
 var authCreateCmd = &cobra.Command{
 	Use:   "password",
 	Short: "Generate random credentials",
