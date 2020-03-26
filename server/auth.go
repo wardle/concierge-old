@@ -230,6 +230,7 @@ func (ucd *UserContextData) GetTokenExpiresAt() time.Time {
 	return ucd.tokenExpiresAt
 }
 
+// endpoints that do not need authentication
 var noAuthEndpoints = map[string]struct{}{
 	"/apiv1.Authenticator/Login":   struct{}{},
 	"/grpc.health.v1.Health/Check": struct{}{},
@@ -237,24 +238,53 @@ var noAuthEndpoints = map[string]struct{}{
 
 // unaryAuthInterceptor provides an interceptor that ensures we have an authenticated user
 func (sv *Server) unaryAuthInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-	ctx, err := sv.auth.addContextData(ctx)
+	ctx, err := sv.auth.contextWithUserData(ctx)
 	if err == nil {
 		return handler(ctx, req)
 	}
-	if _, found := noAuthEndpoints[info.FullMethod]; found {
+	if _, found := noAuthEndpoints[info.FullMethod]; found { // is this endpoint in our list of unprotected endpoints?
 		return handler(ctx, req)
 	}
 	log.Printf("server: unauthenticated call to '%s': %s", info.FullMethod, err)
 	return nil, status.Errorf(codes.Unauthenticated, "unauthenticated: %s", err)
 }
 
-func (sv *Server) streamAuthInterceptor(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-	return fmt.Errorf("not implemented")
+// wrappedStream wraps around the embedded grpc.ServerStream, and intercepts the RecvMsg and
+// SendMsg method call.
+type wrappedStream struct {
+	grpc.ServerStream
+	ucd *UserContextData
 }
 
-// addContextData returns a new context containing UserContextData specifically
+func (ws wrappedStream) Context() context.Context {
+	return context.WithValue(ws.ServerStream.Context(), userContextKey, ws.ucd)
+}
+
+func (w *wrappedStream) RecvMsg(m interface{}) error {
+	return w.ServerStream.RecvMsg(m)
+}
+
+func (w *wrappedStream) SendMsg(m interface{}) error {
+	return w.ServerStream.SendMsg(m)
+}
+
+func (sv *Server) streamAuthInterceptor(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	ctx, err := sv.auth.contextWithUserData(ss.Context())
+	if err != nil {
+		return err
+	}
+	ucd := GetContextData(ctx)
+	ucd.GetAuthenticatedUser()
+	err = handler(srv, &wrappedStream{ss, ucd})
+	if err != nil {
+		log.Printf("auth: streaming failed with error: %v", err)
+	}
+	return err
+}
+
+// contextWithUserData returns a new context containing UserContextData specifically
 //  returning the old context in the event of an error
-func (auth *Auth) addContextData(ctx context.Context) (context.Context, error) {
+func (auth *Auth) contextWithUserData(ctx context.Context) (context.Context, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		return ctx, fmt.Errorf("invalid token")

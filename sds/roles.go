@@ -65,29 +65,29 @@ func roleResolver(ctx context.Context, id *apiv1.Identifier) (proto.Message, err
 	return nil, identifiers.ErrNotFound
 }
 
-func mapSDStoSNOMED(ctx context.Context, id *apiv1.Identifier) (*apiv1.Identifier, error) {
+func mapSDStoSNOMED(ctx context.Context, id *apiv1.Identifier, f func(*apiv1.Identifier) error) error {
 	if sctID, found := sdsMapping[id.GetValue()]; found {
 		mapped := &apiv1.Identifier{
 			System: identifiers.SNOMEDCT,
 			Value:  strconv.FormatUint(sctID, 10),
 		}
 		log.Printf("sds: mapping %s|%s to %s|%s", id.System, id.Value, mapped.System, mapped.Value)
-		return mapped, nil
+		return f(mapped)
 	}
-	return nil, identifiers.ErrNotFound
+	return identifiers.ErrNotFound
 }
 
 // TODO: should use SNOMED service to automatically check is type of occupation, and then
 // find the map.
-func mapSNOMEDtoSDS(ctx context.Context, id *apiv1.Identifier) (*apiv1.Identifier, error) {
+func mapSNOMEDtoSDS(ctx context.Context, id *apiv1.Identifier, f func(*apiv1.Identifier) error) error {
 	sctID, err := snomed.ParseAndValidate(id.GetValue())
 	if err != nil {
 		log.Printf("sds: failed to map from SNOMED: invalid identifier: %s", id.Value)
-		return nil, fmt.Errorf("cannot map from SNOMED '%s': %w", id.GetValue(), err)
+		return fmt.Errorf("cannot map from SNOMED '%s': %w", id.GetValue(), err)
 	}
 	if !sctID.IsConcept() {
 		log.Printf("sds: failed to map from SNOMED: identifier not a concept: %s", id.Value)
-		return nil, fmt.Errorf("cannot map from SNOMED, expected concept, got: %s", sctID)
+		return fmt.Errorf("cannot map from SNOMED, expected concept, got: %s", sctID)
 	}
 	log.Printf("trying to crossmap from snomed identifier: %v", sctID)
 	if sds, found := sdsReverseMapping[uint64(sctID)]; found {
@@ -96,10 +96,10 @@ func mapSNOMEDtoSDS(ctx context.Context, id *apiv1.Identifier) (*apiv1.Identifie
 			Value:  sds,
 		}
 		log.Printf("sds: mapped from %s|%s to %s|%s", id.System, id.Value, mapped.System, mapped.Value)
-		return mapped, nil
+		return f(mapped)
 	}
 	log.Printf("sds: could not map from %s|%s: not found in crossmap to sds", id.System, id.Value)
-	return nil, fmt.Errorf("failed to map %s to sds: %w", id.Value, identifiers.ErrNotFound)
+	return fmt.Errorf("failed to map %s to sds: %w", id.Value, identifiers.ErrNotFound)
 }
 
 var sdsReverseMapping = map[uint64]string{}

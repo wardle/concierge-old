@@ -26,7 +26,7 @@ var (
 	resolversMu sync.RWMutex
 	resolvers   = make(map[string]func(ctx context.Context, id *apiv1.Identifier) (proto.Message, error))
 	mappersMu   sync.RWMutex
-	mappers     = make(map[string]func(ctx context.Context, id *apiv1.Identifier) (*apiv1.Identifier, error))
+	mappers     = make(map[string]func(ctx context.Context, id *apiv1.Identifier, f func(*apiv1.Identifier) error) error)
 )
 
 // ErrNoResolver is an error for when a valid resolver is not registered for the specified URI
@@ -71,7 +71,7 @@ func mapperKey(fromURI string, toURI string) string {
 }
 
 // RegisterMapper registers a handler to map a value from one system to another
-func RegisterMapper(fromURI string, toURI string, f func(context.Context, *apiv1.Identifier) (*apiv1.Identifier, error)) {
+func RegisterMapper(fromURI string, toURI string, f func(context.Context, *apiv1.Identifier, func(*apiv1.Identifier) error) error) {
 	mappersMu.Lock()
 	defer mappersMu.Unlock()
 	key := mapperKey(fromURI, toURI)
@@ -128,27 +128,30 @@ func (svc *Server) GetIdentifier(ctx context.Context, id *apiv1.Identifier) (*an
 }
 
 // MapIdentifier resolves an identifier
-func (svc *Server) MapIdentifier(ctx context.Context, r *apiv1.IdentifierMapRequest) (*apiv1.Identifier, error) {
+func (svc *Server) MapIdentifier(r *apiv1.IdentifierMapRequest, stream apiv1.Identifiers_MapIdentifierServer) error {
 	id := &apiv1.Identifier{
 		System: r.GetSystem(),
 		Value:  r.GetValue(),
 	}
-	return Map(ctx, id, r.GetTargetUri())
+	log.Printf("identifiers: mapping '%s|%s' to %s", r.GetSystem(), r.GetValue(), r.GetTargetUri())
+	return Map(stream.Context(), id, r.GetTargetUri(), func(result *apiv1.Identifier) error {
+		return stream.Send(result)
+	})
 }
 
 // Map attempts to map an identifier from one code system to another
-func Map(ctx context.Context, id *apiv1.Identifier, uri string) (*apiv1.Identifier, error) {
+func Map(ctx context.Context, id *apiv1.Identifier, uri string, f func(*apiv1.Identifier) error) error {
 	if id.System == uri {
-		return id, nil
+		return f(id)
 	}
 	key := mapperKey(id.System, uri)
 	mappersMu.RLock()
 	mapper, ok := mappers[key]
 	mappersMu.RUnlock()
 	if !ok {
-		return nil, fmt.Errorf("unable to map from '%s' to '%s':%w", id.System, uri, ErrNoMapper)
+		return status.Errorf(codes.NotFound, "unable to map from '%s' to '%s':%s", id.System, uri, ErrNoMapper)
 	}
-	return mapper(ctx, id)
+	return mapper(ctx, id, f)
 }
 
 // Systems returns a list of the supported identifier systems

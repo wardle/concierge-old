@@ -17,15 +17,15 @@ func init() {
 	// register identifiers of the tuple empi-authority-code/organisation-code (https://fhir.wales.nhs.uk/empi-authority-code|140)  (for Cardiff and Vale)
 	identifiers.Register("Wales EMPI authority", empiNamespaceURI)
 	// map between above and a standard ODS identifier (https://fhir.nhs.uk/Id/ods-site-code|RWMBV)
-	identifiers.RegisterMapper(empiNamespaceURI, identifiers.ODSSiteCode, func(ctx context.Context, empiID *apiv1.Identifier) (*apiv1.Identifier, error) {
+	identifiers.RegisterMapper(empiNamespaceURI, identifiers.ODSSiteCode, func(ctx context.Context, empiID *apiv1.Identifier, f func(*apiv1.Identifier) error) error {
 		if empiID.System != empiNamespaceURI {
-			return nil, fmt.Errorf("expected namespace: %s. got: %s. error:%w", empiNamespaceURI, empiID.System, identifiers.ErrNoMapper)
+			return fmt.Errorf("expected namespace: %s. got: %s. error:%w", empiNamespaceURI, empiID.System, identifiers.ErrNoMapper)
 		}
 		auth := lookupFromEmpiOrgCode(empiID.Value)
 		if auth == AuthorityUnknown {
-			return nil, fmt.Errorf("unable to map %s|%s to namespace %s", empiID.System, empiID.Value, identifiers.ODSSiteCode)
+			return fmt.Errorf("unable to map %s|%s to namespace %s", empiID.System, empiID.Value, identifiers.ODSSiteCode)
 		}
-		return auth.ToODSIdentifier(), nil
+		return f(auth.ToODSIdentifier())
 	})
 }
 

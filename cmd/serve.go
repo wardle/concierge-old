@@ -79,6 +79,8 @@ func createServers() *myServer {
 			log.Fatal(err)
 		}
 		identifiers.RegisterResolver(identifiers.SNOMEDCT, my.term.Resolve)
+		identifiers.RegisterMapper(identifiers.ReadV2, identifiers.SNOMEDCT, my.term.ReadV2toSNOMEDCT)
+		identifiers.RegisterMapper(identifiers.SNOMEDCT, identifiers.ReadV2, my.term.SNOMEDCTtoReadV2)
 	} else {
 		log.Printf("warning: running without terminology server")
 	}
