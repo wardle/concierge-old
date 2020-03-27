@@ -139,6 +139,61 @@ func (HumanName_Use) EnumDescriptor() ([]byte, []int) {
 	return file_model_proto_rawDescGZIP(), []int{5, 0}
 }
 
+type CompositionStatus_Status int32
+
+const (
+	CompositionStatus_UNKNOWN  CompositionStatus_Status = 0
+	CompositionStatus_DRAFT    CompositionStatus_Status = 1
+	CompositionStatus_FINAL    CompositionStatus_Status = 2
+	CompositionStatus_AMENDED  CompositionStatus_Status = 3
+	CompositionStatus_IN_ERROR CompositionStatus_Status = 4
+)
+
+// Enum value maps for CompositionStatus_Status.
+var (
+	CompositionStatus_Status_name = map[int32]string{
+		0: "UNKNOWN",
+		1: "DRAFT",
+		2: "FINAL",
+		3: "AMENDED",
+		4: "IN_ERROR",
+	}
+	CompositionStatus_Status_value = map[string]int32{
+		"UNKNOWN":  0,
+		"DRAFT":    1,
+		"FINAL":    2,
+		"AMENDED":  3,
+		"IN_ERROR": 4,
+	}
+)
+
+func (x CompositionStatus_Status) Enum() *CompositionStatus_Status {
+	p := new(CompositionStatus_Status)
+	*p = x
+	return p
+}
+
+func (x CompositionStatus_Status) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (CompositionStatus_Status) Descriptor() protoreflect.EnumDescriptor {
+	return file_model_proto_enumTypes[2].Descriptor()
+}
+
+func (CompositionStatus_Status) Type() protoreflect.EnumType {
+	return &file_model_proto_enumTypes[2]
+}
+
+func (x CompositionStatus_Status) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use CompositionStatus_Status.Descriptor instead.
+func (CompositionStatus_Status) EnumDescriptor() ([]byte, []int) {
+	return file_model_proto_rawDescGZIP(), []int{15, 0}
+}
+
 type Patient struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -1193,6 +1248,172 @@ func (x *LoginResponse) GetToken() string {
 	return ""
 }
 
+type PublishDocumentRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Id             *Identifier          `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`                                                  // unique identifier for this document, value typically being a UUID but some implementations will use system/primarykey approach
+	Patient        *Patient             `protobuf:"bytes,2,opt,name=patient,proto3" json:"patient,omitempty"`                                        // patient to which this refers -
+	Authors        []*Identifier        `protobuf:"bytes,3,rep,name=authors,proto3" json:"authors,omitempty"`                                        // author(s) of the document
+	Responsible    []*Identifier        `protobuf:"bytes,4,rep,name=responsible,proto3" json:"responsible,omitempty"`                                // responsible author(s) (e.g. consultant)
+	Administered   *Identifier          `protobuf:"bytes,5,opt,name=administered,proto3" json:"administered,omitempty"`                              // administered/typed/prepared by  (may be same as author)
+	Encounter      *Identifier          `protobuf:"bytes,6,opt,name=encounter,proto3" json:"encounter,omitempty"`                                    // encounter to which this document refers
+	Title          string               `protobuf:"bytes,7,opt,name=title,proto3" json:"title,omitempty"`                                            // title of this document
+	DateTime       *timestamp.Timestamp `protobuf:"bytes,8,opt,name=date_time,json=dateTime,proto3" json:"date_time,omitempty"`                      // logical date/time of the document - may be the "event" date time
+	TypedDateTime  *timestamp.Timestamp `protobuf:"bytes,9,opt,name=typed_date_time,json=typedDateTime,proto3" json:"typed_date_time,omitempty"`     // when document typed
+	SignedDateTime *timestamp.Timestamp `protobuf:"bytes,10,opt,name=signed_date_time,json=signedDateTime,proto3" json:"signed_date_time,omitempty"` // when document signed off
+}
+
+func (x *PublishDocumentRequest) Reset() {
+	*x = PublishDocumentRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_model_proto_msgTypes[14]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *PublishDocumentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PublishDocumentRequest) ProtoMessage() {}
+
+func (x *PublishDocumentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_model_proto_msgTypes[14]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PublishDocumentRequest.ProtoReflect.Descriptor instead.
+func (*PublishDocumentRequest) Descriptor() ([]byte, []int) {
+	return file_model_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *PublishDocumentRequest) GetId() *Identifier {
+	if x != nil {
+		return x.Id
+	}
+	return nil
+}
+
+func (x *PublishDocumentRequest) GetPatient() *Patient {
+	if x != nil {
+		return x.Patient
+	}
+	return nil
+}
+
+func (x *PublishDocumentRequest) GetAuthors() []*Identifier {
+	if x != nil {
+		return x.Authors
+	}
+	return nil
+}
+
+func (x *PublishDocumentRequest) GetResponsible() []*Identifier {
+	if x != nil {
+		return x.Responsible
+	}
+	return nil
+}
+
+func (x *PublishDocumentRequest) GetAdministered() *Identifier {
+	if x != nil {
+		return x.Administered
+	}
+	return nil
+}
+
+func (x *PublishDocumentRequest) GetEncounter() *Identifier {
+	if x != nil {
+		return x.Encounter
+	}
+	return nil
+}
+
+func (x *PublishDocumentRequest) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *PublishDocumentRequest) GetDateTime() *timestamp.Timestamp {
+	if x != nil {
+		return x.DateTime
+	}
+	return nil
+}
+
+func (x *PublishDocumentRequest) GetTypedDateTime() *timestamp.Timestamp {
+	if x != nil {
+		return x.TypedDateTime
+	}
+	return nil
+}
+
+func (x *PublishDocumentRequest) GetSignedDateTime() *timestamp.Timestamp {
+	if x != nil {
+		return x.SignedDateTime
+	}
+	return nil
+}
+
+type CompositionStatus struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Status CompositionStatus_Status `protobuf:"varint,1,opt,name=status,proto3,enum=apiv1.CompositionStatus_Status" json:"status,omitempty"`
+}
+
+func (x *CompositionStatus) Reset() {
+	*x = CompositionStatus{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_model_proto_msgTypes[15]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *CompositionStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompositionStatus) ProtoMessage() {}
+
+func (x *CompositionStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_model_proto_msgTypes[15]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompositionStatus.ProtoReflect.Descriptor instead.
+func (*CompositionStatus) Descriptor() ([]byte, []int) {
+	return file_model_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *CompositionStatus) GetStatus() CompositionStatus_Status {
+	if x != nil {
+		return x.Status
+	}
+	return CompositionStatus_UNKNOWN
+}
+
 var File_model_proto protoreflect.FileDescriptor
 
 var file_model_proto_rawDesc = []byte{
@@ -1351,14 +1572,57 @@ var file_model_proto_rawDesc = []byte{
 	0x65, 0x73, 0x68, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x22, 0x25, 0x0a, 0x0d, 0x4c, 0x6f,
 	0x67, 0x69, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x14, 0x0a, 0x05, 0x74,
 	0x6f, 0x6b, 0x65, 0x6e, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x05, 0x74, 0x6f, 0x6b, 0x65,
-	0x6e, 0x2a, 0x2b, 0x0a, 0x06, 0x47, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x12, 0x0b, 0x0a, 0x07, 0x55,
-	0x4e, 0x4b, 0x4e, 0x4f, 0x57, 0x4e, 0x10, 0x00, 0x12, 0x08, 0x0a, 0x04, 0x4d, 0x41, 0x4c, 0x45,
-	0x10, 0x01, 0x12, 0x0a, 0x0a, 0x06, 0x46, 0x45, 0x4d, 0x41, 0x4c, 0x45, 0x10, 0x02, 0x42, 0x47,
-	0x0a, 0x18, 0x63, 0x6f, 0x6d, 0x2e, 0x65, 0x6c, 0x64, 0x72, 0x69, 0x78, 0x2e, 0x63, 0x6f, 0x6e,
-	0x63, 0x69, 0x65, 0x72, 0x67, 0x65, 0x2e, 0x61, 0x70, 0x69, 0x42, 0x06, 0x50, 0x72, 0x6f, 0x74,
-	0x6f, 0x73, 0x50, 0x00, 0x5a, 0x21, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d,
-	0x2f, 0x77, 0x61, 0x72, 0x64, 0x6c, 0x65, 0x2f, 0x63, 0x6f, 0x6e, 0x63, 0x69, 0x65, 0x72, 0x67,
-	0x65, 0x2f, 0x61, 0x70, 0x69, 0x76, 0x31, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x6e, 0x22, 0x88, 0x04, 0x0a, 0x16, 0x50, 0x75, 0x62, 0x6c, 0x69, 0x73, 0x68, 0x44, 0x6f, 0x63,
+	0x75, 0x6d, 0x65, 0x6e, 0x74, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x21, 0x0a, 0x02,
+	0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x11, 0x2e, 0x61, 0x70, 0x69, 0x76, 0x31,
+	0x2e, 0x49, 0x64, 0x65, 0x6e, 0x74, 0x69, 0x66, 0x69, 0x65, 0x72, 0x52, 0x02, 0x69, 0x64, 0x12,
+	0x28, 0x0a, 0x07, 0x70, 0x61, 0x74, 0x69, 0x65, 0x6e, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b,
+	0x32, 0x0e, 0x2e, 0x61, 0x70, 0x69, 0x76, 0x31, 0x2e, 0x50, 0x61, 0x74, 0x69, 0x65, 0x6e, 0x74,
+	0x52, 0x07, 0x70, 0x61, 0x74, 0x69, 0x65, 0x6e, 0x74, 0x12, 0x2b, 0x0a, 0x07, 0x61, 0x75, 0x74,
+	0x68, 0x6f, 0x72, 0x73, 0x18, 0x03, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x11, 0x2e, 0x61, 0x70, 0x69,
+	0x76, 0x31, 0x2e, 0x49, 0x64, 0x65, 0x6e, 0x74, 0x69, 0x66, 0x69, 0x65, 0x72, 0x52, 0x07, 0x61,
+	0x75, 0x74, 0x68, 0x6f, 0x72, 0x73, 0x12, 0x33, 0x0a, 0x0b, 0x72, 0x65, 0x73, 0x70, 0x6f, 0x6e,
+	0x73, 0x69, 0x62, 0x6c, 0x65, 0x18, 0x04, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x11, 0x2e, 0x61, 0x70,
+	0x69, 0x76, 0x31, 0x2e, 0x49, 0x64, 0x65, 0x6e, 0x74, 0x69, 0x66, 0x69, 0x65, 0x72, 0x52, 0x0b,
+	0x72, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x69, 0x62, 0x6c, 0x65, 0x12, 0x35, 0x0a, 0x0c, 0x61,
+	0x64, 0x6d, 0x69, 0x6e, 0x69, 0x73, 0x74, 0x65, 0x72, 0x65, 0x64, 0x18, 0x05, 0x20, 0x01, 0x28,
+	0x0b, 0x32, 0x11, 0x2e, 0x61, 0x70, 0x69, 0x76, 0x31, 0x2e, 0x49, 0x64, 0x65, 0x6e, 0x74, 0x69,
+	0x66, 0x69, 0x65, 0x72, 0x52, 0x0c, 0x61, 0x64, 0x6d, 0x69, 0x6e, 0x69, 0x73, 0x74, 0x65, 0x72,
+	0x65, 0x64, 0x12, 0x2f, 0x0a, 0x09, 0x65, 0x6e, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x65, 0x72, 0x18,
+	0x06, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x11, 0x2e, 0x61, 0x70, 0x69, 0x76, 0x31, 0x2e, 0x49, 0x64,
+	0x65, 0x6e, 0x74, 0x69, 0x66, 0x69, 0x65, 0x72, 0x52, 0x09, 0x65, 0x6e, 0x63, 0x6f, 0x75, 0x6e,
+	0x74, 0x65, 0x72, 0x12, 0x14, 0x0a, 0x05, 0x74, 0x69, 0x74, 0x6c, 0x65, 0x18, 0x07, 0x20, 0x01,
+	0x28, 0x09, 0x52, 0x05, 0x74, 0x69, 0x74, 0x6c, 0x65, 0x12, 0x37, 0x0a, 0x09, 0x64, 0x61, 0x74,
+	0x65, 0x5f, 0x74, 0x69, 0x6d, 0x65, 0x18, 0x08, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1a, 0x2e, 0x67,
+	0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x54,
+	0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70, 0x52, 0x08, 0x64, 0x61, 0x74, 0x65, 0x54, 0x69,
+	0x6d, 0x65, 0x12, 0x42, 0x0a, 0x0f, 0x74, 0x79, 0x70, 0x65, 0x64, 0x5f, 0x64, 0x61, 0x74, 0x65,
+	0x5f, 0x74, 0x69, 0x6d, 0x65, 0x18, 0x09, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1a, 0x2e, 0x67, 0x6f,
+	0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x54, 0x69,
+	0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70, 0x52, 0x0d, 0x74, 0x79, 0x70, 0x65, 0x64, 0x44, 0x61,
+	0x74, 0x65, 0x54, 0x69, 0x6d, 0x65, 0x12, 0x44, 0x0a, 0x10, 0x73, 0x69, 0x67, 0x6e, 0x65, 0x64,
+	0x5f, 0x64, 0x61, 0x74, 0x65, 0x5f, 0x74, 0x69, 0x6d, 0x65, 0x18, 0x0a, 0x20, 0x01, 0x28, 0x0b,
+	0x32, 0x1a, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62,
+	0x75, 0x66, 0x2e, 0x54, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70, 0x52, 0x0e, 0x73, 0x69,
+	0x67, 0x6e, 0x65, 0x64, 0x44, 0x61, 0x74, 0x65, 0x54, 0x69, 0x6d, 0x65, 0x22, 0x94, 0x01, 0x0a,
+	0x11, 0x43, 0x6f, 0x6d, 0x70, 0x6f, 0x73, 0x69, 0x74, 0x69, 0x6f, 0x6e, 0x53, 0x74, 0x61, 0x74,
+	0x75, 0x73, 0x12, 0x37, 0x0a, 0x06, 0x73, 0x74, 0x61, 0x74, 0x75, 0x73, 0x18, 0x01, 0x20, 0x01,
+	0x28, 0x0e, 0x32, 0x1f, 0x2e, 0x61, 0x70, 0x69, 0x76, 0x31, 0x2e, 0x43, 0x6f, 0x6d, 0x70, 0x6f,
+	0x73, 0x69, 0x74, 0x69, 0x6f, 0x6e, 0x53, 0x74, 0x61, 0x74, 0x75, 0x73, 0x2e, 0x53, 0x74, 0x61,
+	0x74, 0x75, 0x73, 0x52, 0x06, 0x73, 0x74, 0x61, 0x74, 0x75, 0x73, 0x22, 0x46, 0x0a, 0x06, 0x53,
+	0x74, 0x61, 0x74, 0x75, 0x73, 0x12, 0x0b, 0x0a, 0x07, 0x55, 0x4e, 0x4b, 0x4e, 0x4f, 0x57, 0x4e,
+	0x10, 0x00, 0x12, 0x09, 0x0a, 0x05, 0x44, 0x52, 0x41, 0x46, 0x54, 0x10, 0x01, 0x12, 0x09, 0x0a,
+	0x05, 0x46, 0x49, 0x4e, 0x41, 0x4c, 0x10, 0x02, 0x12, 0x0b, 0x0a, 0x07, 0x41, 0x4d, 0x45, 0x4e,
+	0x44, 0x45, 0x44, 0x10, 0x03, 0x12, 0x0c, 0x0a, 0x08, 0x49, 0x4e, 0x5f, 0x45, 0x52, 0x52, 0x4f,
+	0x52, 0x10, 0x04, 0x2a, 0x2b, 0x0a, 0x06, 0x47, 0x65, 0x6e, 0x64, 0x65, 0x72, 0x12, 0x0b, 0x0a,
+	0x07, 0x55, 0x4e, 0x4b, 0x4e, 0x4f, 0x57, 0x4e, 0x10, 0x00, 0x12, 0x08, 0x0a, 0x04, 0x4d, 0x41,
+	0x4c, 0x45, 0x10, 0x01, 0x12, 0x0a, 0x0a, 0x06, 0x46, 0x45, 0x4d, 0x41, 0x4c, 0x45, 0x10, 0x02,
+	0x42, 0x47, 0x0a, 0x18, 0x63, 0x6f, 0x6d, 0x2e, 0x65, 0x6c, 0x64, 0x72, 0x69, 0x78, 0x2e, 0x63,
+	0x6f, 0x6e, 0x63, 0x69, 0x65, 0x72, 0x67, 0x65, 0x2e, 0x61, 0x70, 0x69, 0x42, 0x06, 0x50, 0x72,
+	0x6f, 0x74, 0x6f, 0x73, 0x50, 0x00, 0x5a, 0x21, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63,
+	0x6f, 0x6d, 0x2f, 0x77, 0x61, 0x72, 0x64, 0x6c, 0x65, 0x2f, 0x63, 0x6f, 0x6e, 0x63, 0x69, 0x65,
+	0x72, 0x67, 0x65, 0x2f, 0x61, 0x70, 0x69, 0x76, 0x31, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f,
+	0x33,
 }
 
 var (
@@ -1373,57 +1637,70 @@ func file_model_proto_rawDescGZIP() []byte {
 	return file_model_proto_rawDescData
 }
 
-var file_model_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_model_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_model_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_model_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_model_proto_goTypes = []interface{}{
-	(Gender)(0),                 // 0: apiv1.Gender
-	(HumanName_Use)(0),          // 1: apiv1.HumanName.Use
-	(*Patient)(nil),             // 2: apiv1.Patient
-	(*Period)(nil),              // 3: apiv1.Period
-	(*Identifier)(nil),          // 4: apiv1.Identifier
-	(*Address)(nil),             // 5: apiv1.Address
-	(*Telephone)(nil),           // 6: apiv1.Telephone
-	(*HumanName)(nil),           // 7: apiv1.HumanName
-	(*Attachment)(nil),          // 8: apiv1.Attachment
-	(*Practitioner)(nil),        // 9: apiv1.Practitioner
-	(*PractitionerRole)(nil),    // 10: apiv1.PractitionerRole
-	(*Role)(nil),                // 11: apiv1.Role
-	(*System)(nil),              // 12: apiv1.System
-	(*LoginRequest)(nil),        // 13: apiv1.LoginRequest
-	(*TokenRefreshRequest)(nil), // 14: apiv1.TokenRefreshRequest
-	(*LoginResponse)(nil),       // 15: apiv1.LoginResponse
-	(*timestamp.Timestamp)(nil), // 16: google.protobuf.Timestamp
+	(Gender)(0),                    // 0: apiv1.Gender
+	(HumanName_Use)(0),             // 1: apiv1.HumanName.Use
+	(CompositionStatus_Status)(0),  // 2: apiv1.CompositionStatus.Status
+	(*Patient)(nil),                // 3: apiv1.Patient
+	(*Period)(nil),                 // 4: apiv1.Period
+	(*Identifier)(nil),             // 5: apiv1.Identifier
+	(*Address)(nil),                // 6: apiv1.Address
+	(*Telephone)(nil),              // 7: apiv1.Telephone
+	(*HumanName)(nil),              // 8: apiv1.HumanName
+	(*Attachment)(nil),             // 9: apiv1.Attachment
+	(*Practitioner)(nil),           // 10: apiv1.Practitioner
+	(*PractitionerRole)(nil),       // 11: apiv1.PractitionerRole
+	(*Role)(nil),                   // 12: apiv1.Role
+	(*System)(nil),                 // 13: apiv1.System
+	(*LoginRequest)(nil),           // 14: apiv1.LoginRequest
+	(*TokenRefreshRequest)(nil),    // 15: apiv1.TokenRefreshRequest
+	(*LoginResponse)(nil),          // 16: apiv1.LoginResponse
+	(*PublishDocumentRequest)(nil), // 17: apiv1.PublishDocumentRequest
+	(*CompositionStatus)(nil),      // 18: apiv1.CompositionStatus
+	(*timestamp.Timestamp)(nil),    // 19: google.protobuf.Timestamp
 }
 var file_model_proto_depIdxs = []int32{
 	0,  // 0: apiv1.Patient.gender:type_name -> apiv1.Gender
-	16, // 1: apiv1.Patient.birth_date:type_name -> google.protobuf.Timestamp
-	16, // 2: apiv1.Patient.deceased_date:type_name -> google.protobuf.Timestamp
-	4,  // 3: apiv1.Patient.identifiers:type_name -> apiv1.Identifier
-	5,  // 4: apiv1.Patient.addresses:type_name -> apiv1.Address
-	6,  // 5: apiv1.Patient.telephones:type_name -> apiv1.Telephone
-	16, // 6: apiv1.Period.start:type_name -> google.protobuf.Timestamp
-	16, // 7: apiv1.Period.end:type_name -> google.protobuf.Timestamp
-	3,  // 8: apiv1.Address.period:type_name -> apiv1.Period
+	19, // 1: apiv1.Patient.birth_date:type_name -> google.protobuf.Timestamp
+	19, // 2: apiv1.Patient.deceased_date:type_name -> google.protobuf.Timestamp
+	5,  // 3: apiv1.Patient.identifiers:type_name -> apiv1.Identifier
+	6,  // 4: apiv1.Patient.addresses:type_name -> apiv1.Address
+	7,  // 5: apiv1.Patient.telephones:type_name -> apiv1.Telephone
+	19, // 6: apiv1.Period.start:type_name -> google.protobuf.Timestamp
+	19, // 7: apiv1.Period.end:type_name -> google.protobuf.Timestamp
+	4,  // 8: apiv1.Address.period:type_name -> apiv1.Period
 	1,  // 9: apiv1.HumanName.use:type_name -> apiv1.HumanName.Use
-	3,  // 10: apiv1.HumanName.period:type_name -> apiv1.Period
-	16, // 11: apiv1.Attachment.created:type_name -> google.protobuf.Timestamp
-	4,  // 12: apiv1.Practitioner.identifiers:type_name -> apiv1.Identifier
-	7,  // 13: apiv1.Practitioner.names:type_name -> apiv1.HumanName
+	4,  // 10: apiv1.HumanName.period:type_name -> apiv1.Period
+	19, // 11: apiv1.Attachment.created:type_name -> google.protobuf.Timestamp
+	5,  // 12: apiv1.Practitioner.identifiers:type_name -> apiv1.Identifier
+	8,  // 13: apiv1.Practitioner.names:type_name -> apiv1.HumanName
 	0,  // 14: apiv1.Practitioner.gender:type_name -> apiv1.Gender
-	16, // 15: apiv1.Practitioner.birth_date:type_name -> google.protobuf.Timestamp
-	8,  // 16: apiv1.Practitioner.photos:type_name -> apiv1.Attachment
-	10, // 17: apiv1.Practitioner.roles:type_name -> apiv1.PractitionerRole
-	6,  // 18: apiv1.Practitioner.telephones:type_name -> apiv1.Telephone
-	5,  // 19: apiv1.Practitioner.work_addresses:type_name -> apiv1.Address
-	11, // 20: apiv1.PractitionerRole.role:type_name -> apiv1.Role
-	3,  // 21: apiv1.PractitionerRole.period:type_name -> apiv1.Period
-	4,  // 22: apiv1.Role.identifier:type_name -> apiv1.Identifier
-	4,  // 23: apiv1.LoginRequest.user:type_name -> apiv1.Identifier
-	24, // [24:24] is the sub-list for method output_type
-	24, // [24:24] is the sub-list for method input_type
-	24, // [24:24] is the sub-list for extension type_name
-	24, // [24:24] is the sub-list for extension extendee
-	0,  // [0:24] is the sub-list for field type_name
+	19, // 15: apiv1.Practitioner.birth_date:type_name -> google.protobuf.Timestamp
+	9,  // 16: apiv1.Practitioner.photos:type_name -> apiv1.Attachment
+	11, // 17: apiv1.Practitioner.roles:type_name -> apiv1.PractitionerRole
+	7,  // 18: apiv1.Practitioner.telephones:type_name -> apiv1.Telephone
+	6,  // 19: apiv1.Practitioner.work_addresses:type_name -> apiv1.Address
+	12, // 20: apiv1.PractitionerRole.role:type_name -> apiv1.Role
+	4,  // 21: apiv1.PractitionerRole.period:type_name -> apiv1.Period
+	5,  // 22: apiv1.Role.identifier:type_name -> apiv1.Identifier
+	5,  // 23: apiv1.LoginRequest.user:type_name -> apiv1.Identifier
+	5,  // 24: apiv1.PublishDocumentRequest.id:type_name -> apiv1.Identifier
+	3,  // 25: apiv1.PublishDocumentRequest.patient:type_name -> apiv1.Patient
+	5,  // 26: apiv1.PublishDocumentRequest.authors:type_name -> apiv1.Identifier
+	5,  // 27: apiv1.PublishDocumentRequest.responsible:type_name -> apiv1.Identifier
+	5,  // 28: apiv1.PublishDocumentRequest.administered:type_name -> apiv1.Identifier
+	5,  // 29: apiv1.PublishDocumentRequest.encounter:type_name -> apiv1.Identifier
+	19, // 30: apiv1.PublishDocumentRequest.date_time:type_name -> google.protobuf.Timestamp
+	19, // 31: apiv1.PublishDocumentRequest.typed_date_time:type_name -> google.protobuf.Timestamp
+	19, // 32: apiv1.PublishDocumentRequest.signed_date_time:type_name -> google.protobuf.Timestamp
+	2,  // 33: apiv1.CompositionStatus.status:type_name -> apiv1.CompositionStatus.Status
+	34, // [34:34] is the sub-list for method output_type
+	34, // [34:34] is the sub-list for method input_type
+	34, // [34:34] is the sub-list for extension type_name
+	34, // [34:34] is the sub-list for extension extendee
+	0,  // [0:34] is the sub-list for field type_name
 }
 
 func init() { file_model_proto_init() }
@@ -1600,6 +1877,30 @@ func file_model_proto_init() {
 				return nil
 			}
 		}
+		file_model_proto_msgTypes[14].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*PublishDocumentRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_model_proto_msgTypes[15].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*CompositionStatus); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
 	}
 	file_model_proto_msgTypes[0].OneofWrappers = []interface{}{
 		(*Patient_DeceasedDate)(nil),
@@ -1610,8 +1911,8 @@ func file_model_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_model_proto_rawDesc,
-			NumEnums:      2,
-			NumMessages:   14,
+			NumEnums:      3,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

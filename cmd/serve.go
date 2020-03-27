@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/wardle/concierge/empi"
+	_ "github.com/wardle/concierge/fhir"
 	"github.com/wardle/concierge/identifiers"
 	"github.com/wardle/concierge/nadex"
 	"github.com/wardle/concierge/server"

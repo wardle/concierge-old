@@ -4,7 +4,10 @@ package identifiers
 const (
 
 	// generic
-	URI = "urn:ietf:rfc:3986" // general URI (uniform resource identifier)
+	URI   = "urn:ietf:rfc:3986" // general URI (uniform resource identifier)
+	UUID  = "urn:uuid"          // a UUID as per https://tools.ietf.org/html/rfc4122
+	OID   = "urn:oid"
+	DICOM = "urn:dicom:uid"
 
 	// health and care
 	SNOMEDCT    = "http://snomed.info/sct"
@@ -34,6 +37,9 @@ const (
 	BetsiCentralURI   = "https://fhir.betsicentral.wales.nhs.uk/Id/pas-identifier"
 	BetsiMaelorURI    = "https://fhir.betsimaelor.wales.nhs.uk/Id/pas-identifier"
 	BetsiWestURI      = "https://fhir.betsiwest.wales.nhs.uk/Id/pas-identifier"
+
+	// Specific FHIR value sets
+	CompositionStatus = "http://hl7.org/fhir/composition-status" // see https://www.hl7.org/fhir/valueset-composition-status.html
 
 	// Concierge service user
 	ConciergeServiceUser = "https://concierge.eldrix.com/Id/service-user"
