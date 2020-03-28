@@ -119,7 +119,7 @@ func (app *App) GetEMPIRequest(ctx context.Context, req *apiv1.Identifier) (*api
 	log.Printf("empi: request from '%s|%s' for %s/%s - mapped to authority:%d (%s)", ucd.GetAuthenticatedUser().GetSystem(), ucd.GetAuthenticatedUser().GetValue(), req.System, req.Value, authority, empiCode)
 
 	if empiCode == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "unsupported authority: %s (%s)", req.System, authority)
+		return nil, status.Errorf(codes.InvalidArgument, "unsupported authority: %s (%d)", req.System, authority)
 	}
 	return app.GetInternalEMPIRequest(ctx, &apiv1.Identifier{
 		System: authority.empiOrganisationCode(),
