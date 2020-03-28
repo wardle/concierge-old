@@ -141,7 +141,7 @@ func init() {
 func compositionStatusResolver(ctx context.Context, id *apiv1.Identifier) (proto.Message, error) {
 	cs := LookupCompositionStatus(id.GetValue())
 	if cs != CompositionStatusUnknown {
-		log.Printf("fhir: resolving %s|%s to %s", id.System, id.Value, cs.Title())
+		log.Printf("fhir: resolving %s|%s to %s", id.System, id.Value, cs.ToProtobuf())
 		return &apiv1.CompositionStatus{
 			Status: cs.ToProtobuf(),
 		}, nil
