@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log"
 	"sort"
-	"strings"
 	"sync"
 
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
@@ -26,7 +25,7 @@ var (
 	resolversMu sync.RWMutex
 	resolvers   = make(map[string]func(ctx context.Context, id *apiv1.Identifier) (proto.Message, error))
 	mappersMu   sync.RWMutex
-	mappers     = make(map[string]func(ctx context.Context, id *apiv1.Identifier, f func(*apiv1.Identifier) error) error)
+	mappers     = make(map[mapKey]func(ctx context.Context, id *apiv1.Identifier, f func(*apiv1.Identifier) error) error)
 )
 
 // ErrNoResolver is an error for when a valid resolver is not registered for the specified URI
@@ -66,15 +65,16 @@ func Resolve(ctx context.Context, id *apiv1.Identifier) (proto.Message, error) {
 	return resolver(ctx, id)
 }
 
-func mapperKey(fromURI string, toURI string) string {
-	return fromURI + "|" + toURI
+type mapKey struct {
+	fromURI string
+	toURI   string
 }
 
 // RegisterMapper registers a handler to map a value from one system to another
 func RegisterMapper(fromURI string, toURI string, f func(context.Context, *apiv1.Identifier, func(*apiv1.Identifier) error) error) {
 	mappersMu.Lock()
 	defer mappersMu.Unlock()
-	key := mapperKey(fromURI, toURI)
+	key := mapKey{fromURI, toURI}
 	if _, dup := mappers[key]; dup {
 		panic("identifiers: register mapper called twice for URI " + fromURI)
 	}
@@ -94,8 +94,8 @@ func (svc *Server) RegisterServer(s *grpc.Server) {
 	for _, resolver := range Resolvers() {
 		log.Printf("identifiers: registered resolver for '%s'", resolver)
 	}
-	for fromURI, toURI := range Mappers() {
-		log.Printf("identifiers: registered mapper for '%s'->'%s'", fromURI, toURI)
+	for _, mapper := range Mappers() {
+		log.Printf("identifiers: registered mapper for %s", mapper)
 	}
 
 	apiv1.RegisterIdentifiersServer(s, svc)
@@ -144,7 +144,7 @@ func Map(ctx context.Context, id *apiv1.Identifier, uri string, f func(*apiv1.Id
 	if id.System == uri {
 		return f(id)
 	}
-	key := mapperKey(id.System, uri)
+	key := mapKey{id.System, uri}
 	mappersMu.RLock()
 	mapper, ok := mappers[key]
 	mappersMu.RUnlock()
@@ -179,13 +179,12 @@ func Resolvers() []string {
 }
 
 // Mappers returns the list of registered identifier mappers
-func Mappers() map[string]string {
+func Mappers() []string {
 	mappersMu.RLock()
 	defer mappersMu.RUnlock()
-	list := make(map[string]string)
+	list := make([]string, 0, len(mappers))
 	for m := range mappers {
-		uris := strings.Split(m, "|")
-		list[uris[0]] = uris[1]
+		list = append(list, m.fromURI+" -> "+m.toURI)
 	}
 	return list
 }
