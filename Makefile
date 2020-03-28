@@ -2,11 +2,12 @@
 ROOT_DIR:=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 BINARY=concierge
 VERSION=0.1
-BUILD=`git rev-list HEAD --max-count=1 --abbrev-commit`
+COMMIT=`git rev-list HEAD --max-count=1 --abbrev-commit`
+COMMIT_DATE=`git log -1 --format=%cd --date=format:'%Y%m%d%H%M%S'`
 PLATFORMS=darwin linux windows
 ARCHITECTURES=amd64
 GOOGLEAPIS=${GOPATH}/src/github.com/grpc-ecosystem/grpc-gateway/third_party/googleapis
-LDFLAGS=-ldflags "-X main.version=${VERSION} -X main.build=${BUILD}"
+LDFLAGS=-ldflags "-X main.version=${VERSION} -X main.commit=${COMMIT}"
 
 default: generate test build
 
@@ -37,6 +38,7 @@ test-nc:
 
 build:
 	@go build $(LDFLAGS) -o ${BINARY}
+	@go build $(LDFLAGS) -o ${BINARY}-${VERSION}-${COMMIT_DATE}-${COMMIT}
 
 build_all:
 	$(foreach GOOS, $(PLATFORMS),\

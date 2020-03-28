@@ -21,6 +21,13 @@ import (
 	_ "github.com/wardle/concierge/sds"
 )
 
+// Version injected at build time
+var version string
+
+// Commit is last commit date/id injected at build time
+var commit string
+
 func main() {
+	cmd.Version = version + ": " + commit
 	cmd.Execute()
 }
