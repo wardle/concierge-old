@@ -7,8 +7,8 @@ import (
 	"github.com/patrickmn/go-cache"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/wardle/concierge/cav"
 	"github.com/wardle/concierge/empi"
-	_ "github.com/wardle/concierge/fhir"
 	"github.com/wardle/concierge/identifiers"
 	"github.com/wardle/concierge/nadex"
 	"github.com/wardle/concierge/server"
@@ -39,6 +39,7 @@ type myServer struct {
 	identifiers *identifiers.Server // an identifier service
 	nadex       *nadex.App
 	empi        *empi.App
+	cav         *cav.PMSService
 	term        *terminology.Terminology
 }
 
@@ -67,10 +68,13 @@ func createServers() *myServer {
 	my.empi = walesEmpiServer()
 	//my.empi.Register("wales-empi", ep) 		-- temporarily unnecessary as can use identifier lookup instead
 	identifiers.RegisterResolver(identifiers.NHSNumber, my.empi.ResolveIdentifier)
-	identifiers.RegisterResolver(identifiers.CardiffAndValeURI, my.empi.ResolveIdentifier)
-	identifiers.RegisterResolver(identifiers.AneurinBevanURI, my.empi.ResolveIdentifier)
-	identifiers.RegisterResolver(identifiers.CwmTafURI, my.empi.ResolveIdentifier)
-	identifiers.RegisterResolver(identifiers.SwanseaBayURI, my.empi.ResolveIdentifier)
+	identifiers.RegisterResolver(identifiers.AneurinBevanCRN, my.empi.ResolveIdentifier)
+	identifiers.RegisterResolver(identifiers.CwmTafCRN, my.empi.ResolveIdentifier)
+	identifiers.RegisterResolver(identifiers.SwanseaBayCRN, my.empi.ResolveIdentifier)
+
+	// Cardiff and Vale PMS
+	my.cav = cav.NewPMSService(viper.GetString("cav-pms-username"), viper.GetString("cav-pms-password"), 10*time.Second)
+	identifiers.RegisterResolver(identifiers.CardiffAndValeCRN, my.cav.ResolveIdentifier)
 
 	// terminology server
 	if addr := viper.GetString("terminology-addr"); addr != "" {

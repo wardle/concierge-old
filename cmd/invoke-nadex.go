@@ -27,8 +27,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
-// testNadexCmd represents the testNadex command
-var testNadexCmd = &cobra.Command{
+var invokeNadexCmd = &cobra.Command{
 	Use:   "nadex <username> <password> <username>",
 	Short: "Tests connectivity to the NHS Wales' national directory service (NADEX)",
 	Long:  ``,
@@ -64,15 +63,5 @@ var testNadexCmd = &cobra.Command{
 }
 
 func init() {
-	testCmd.AddCommand(testNadexCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// testNadexCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// testNadexCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	invokeCmd.AddCommand(invokeNadexCmd)
 }

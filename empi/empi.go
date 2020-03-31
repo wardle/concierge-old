@@ -211,7 +211,7 @@ func performFake(authority Authority, identifier string) (*apiv1.Patient, error)
 				Value:  "M1147907",
 			},
 			&apiv1.Identifier{
-				System: identifiers.CardiffAndValeURI,
+				System: identifiers.CardiffAndValeCRN,
 				Value:  "X234567",
 			},
 		},

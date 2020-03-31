@@ -29,18 +29,23 @@ const (
 	// NHS Wales identifiers - I have made these up in the absence of any other published standard
 	CymruUserID       = "https://fhir.nhs.uk/Id/cymru-user-id"
 	CymruEmpiURI      = "https://fhir.wales.nhs.uk/Id/empi-number"            // ephemeral EMPI identifier
-	CardiffAndValeURI = "https://fhir.cardiff.wales.nhs.uk/Id/pas-identifier" // CAV PMS identifier
-	SwanseaBayURI     = "https://fhir.swansea.wales.nhs.uk/Id/pas-identifier"
-	CwmTafURI         = "https://fhir.cwmtaf.wales.nhs.uk/Id/pas-identifier"
-	AneurinBevanURI   = "https://fhir.aneurinbevan.nhs.uk/Id/pas-identifier"
-	HywelDdaURI       = "https://fhir.hyweldda.wales.nhs.uk/Id/pas-identifier"
-	BetsiCentralURI   = "https://fhir.betsicentral.wales.nhs.uk/Id/pas-identifier"
-	BetsiMaelorURI    = "https://fhir.betsimaelor.wales.nhs.uk/Id/pas-identifier"
-	BetsiWestURI      = "https://fhir.betsiwest.wales.nhs.uk/Id/pas-identifier"
+	CardiffAndValeCRN = "https://fhir.cardiff.wales.nhs.uk/Id/pas-identifier" // CAV PMS identifier
+	SwanseaBayCRN     = "https://fhir.swansea.wales.nhs.uk/Id/pas-identifier"
+	CwmTafCRN         = "https://fhir.cwmtaf.wales.nhs.uk/Id/pas-identifier"
+	AneurinBevanCRN   = "https://fhir.aneurinbevan.nhs.uk/Id/pas-identifier"
+	HywelDdaCRN       = "https://fhir.hyweldda.wales.nhs.uk/Id/pas-identifier"
+	BetsiCentralCRN   = "https://fhir.betsicentral.wales.nhs.uk/Id/pas-identifier"
+	BetsiMaelorCRN    = "https://fhir.betsimaelor.wales.nhs.uk/Id/pas-identifier"
+	BetsiWestCRN      = "https://fhir.betsiwest.wales.nhs.uk/Id/pas-identifier"
+
+	// Document repository identifiers
+	CardiffAndValeDocID      = "https://fhir.cardiff.wales.nhs.uk/Id/document-identifier" // internal document identifier from CAV PMS
+	CardiffAndValeClinicCode = "https://fhir.cardiff.wales.nhs.uk/Id/clinic-code"
 
 	// Specific FHIR value sets
 	CompositionStatus = "http://hl7.org/fhir/composition-status" // see https://www.hl7.org/fhir/valueset-composition-status.html
 
 	// Concierge service user
 	ConciergeServiceUser = "https://concierge.eldrix.com/Id/service-user"
+	PatientCare          = "https://patientcare.eldrix.com/Id/patientcare-application"
 )

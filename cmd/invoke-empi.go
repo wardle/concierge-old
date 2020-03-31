@@ -77,7 +77,7 @@ concierge test empi 7253698428`,
 }
 
 func init() {
-	testCmd.AddCommand(empiCmd)
+	invokeCmd.AddCommand(empiCmd)
 	empiCmd.PersistentFlags().String("endpoint", "D", "(P)roduction, (T)esting or (D)evelopment")
 	empiCmd.MarkFlagRequired("endpoint")
 	empiCmd.PersistentFlags().String("endpointURL", "", "URL for endpoint (if different to default for P/T/D")

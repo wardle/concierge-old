@@ -121,14 +121,14 @@ var uris = [...]string{
 	"",
 	identifiers.NHSNumber,
 	identifiers.CymruEmpiURI,
-	identifiers.AneurinBevanURI,
-	identifiers.SwanseaBayURI,
-	identifiers.BetsiCentralURI,
-	identifiers.BetsiMaelorURI,
-	identifiers.BetsiWestURI,
-	identifiers.CwmTafURI,
-	identifiers.CardiffAndValeURI,
-	identifiers.HywelDdaURI,
+	identifiers.AneurinBevanCRN,
+	identifiers.SwanseaBayCRN,
+	identifiers.BetsiCentralCRN,
+	identifiers.BetsiMaelorCRN,
+	identifiers.BetsiWestCRN,
+	identifiers.CwmTafCRN,
+	identifiers.CardiffAndValeCRN,
+	identifiers.HywelDdaCRN,
 	"", // don't thnk powys has a PAS!
 }
 

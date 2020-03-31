@@ -87,6 +87,12 @@ func init() {
 	rootCmd.PersistentFlags().Int("empi-cache-minutes", 5, "EMPI cache expiration in minutes, 0=no cache")
 	viper.BindPFlag("empi-cache-minutes", rootCmd.PersistentFlags().Lookup("empi-cache-minutes"))
 
+	// cav configuration
+	rootCmd.PersistentFlags().String("cav-pms-username", "", "Username for CAV PMS")
+	viper.BindPFlag("cav-pms-username", rootCmd.PersistentFlags().Lookup("cav-pms-username"))
+	rootCmd.PersistentFlags().String("cav-pms-password", "", "Password for CAV PMS")
+	viper.BindPFlag("cav-pms-password", rootCmd.PersistentFlags().Lookup("cav-pms-password"))
+
 	// nadex configuration
 	rootCmd.PersistentFlags().String("nadex-username", "", "Username for directory lookups")
 	viper.BindPFlag("nadex-username", rootCmd.PersistentFlags().Lookup("nadex-username"))
