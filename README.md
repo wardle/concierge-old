@@ -47,49 +47,33 @@ Concierge is a new lightweight microservice that provides integration services. 
 It currently supports the following integrations:
 
 * A wrapper around the NHS Wales' enterprise master patient index (EMPI).
-
-The current development supports:
-
 * Staff authentication and lookup via the national directory service (NADEX) to provide staff identity services
+* Staff lookup
+* SNOMED CT
+* Cardiff and Vale Patient Administative System (PAS) integration - for demographics and appointments/scheduling.
+* Cardiff and Vale Document Repository service
+
+It also supports a generic service mechanism based on identifiers:
+
+* System/value ("identifier") resolution and mapping for the following:
+    * NHS Wales patients via namespace https://fhir.wales.nhs.uk/Id/empi-number and organisational (case record numbers) codes for Cardiff and Vale, Swansea, Aneurin Bevan, Cwm Taf Morgannwg, Hywel Dda and Betsi Cadwaladr health boards
+    * NHS Wales practitioners via namespace https://fhir.nhs.uk/Id/cymru-user-id using the live active directory
+    * User roles via the NHS England SDS role identifier namespace https://fhir.nhs.uk/STU3/CodeSystem/CareConnect-SDSJobRoleName-1
+    * SNOMED CT via namespace http://snomed.info/sct
+    * Read V2 and CTV mapping to and from SNOMED via namespaces http://read.info/readv2  and http://read.info/ctv3 respectively
 
 I have integrations with the following systems, that are due to be ported to this new application:
 
-* Cardiff and Vale Patient Administative System (PAS) integration - for demographics and appointments/scheduling.
 * Aneurin Bevan PAS integration
-* Cardiff and Vale Document Repository service
 * National document repository service (Welsh Care Records Service)
 
 Future integrations that will be needed will be:
 
 * Welsh Results Reporting Services (WRRS) - although currently permission has not been available to access this service
 * Welsh Demographics Service (WDS) - which includes lookup via the NHS England Spine for NHS number tracing
+* Organisational data services (ODS)
 
-You can think of concierge as a "socket adaptor" making it possible to plug-in your clinical application into a local ecosystem. Concierge will abstract those integrations into a cohesive set of APIs.
-
-Initially, each "module" will provide a proprietary API that has a more-or-less direct mapping with the underlying implementation, but concierge will then provide a more unified API that abstracts multiple implementations, if they exist.
-
-
-# Build instructions
-
-1. Install bazel, if not already installed
-
-e.g. on Mac OS X,
-
-        brew install bazel
-
-2. Run bazel build:
-
-        bazel build concierge
-        bazel build --platforms=@io_bazel_rules_go//go/toolchain:linux_amd64 concierge
-        bazel build --platforms=@io_bazel_rules_go//go/toolchain:windows_amd64 concierge
-
-
-To update bazel BUILD files using gazelle.
-
-    bazel run //:gazelle -- update-repos -from_file=go.mod
-
-# Module documentation
-
+You can think of concierge as a "socket adaptor" making it possible to plug-in your clinical application into a local ecosystem. Concierge abstracts those integrations into a cohesive set of APIs.
 
 ## EMPI - Welsh Enterprise Master Patient Index
 
