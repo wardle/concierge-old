@@ -3,18 +3,21 @@ module github.com/wardle/concierge
 go 1.14
 
 require (
+	github.com/desertbit/timer v0.0.0-20180107155436-c41aec40b27f // indirect
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/golang/protobuf v1.4.0-rc.4
 	github.com/google/uuid v1.1.1
 	github.com/grpc-ecosystem/grpc-gateway v1.14.3
 	github.com/hashicorp/go-uuid v1.0.2 // indirect
+	github.com/improbable-eng/grpc-web v0.12.0
 	github.com/jcmturner/gofork v1.0.0 // indirect
 	github.com/lib/pq v1.3.0
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/mitchellh/mapstructure v1.2.2 // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/pelletier/go-toml v1.6.0 // indirect
+	github.com/rs/cors v1.7.0 // indirect
 	github.com/sethvargo/go-password v0.1.3
 	github.com/spf13/afero v1.2.2 // indirect
 	github.com/spf13/cast v1.3.1 // indirect

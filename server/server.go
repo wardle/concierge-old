@@ -14,6 +14,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
+	"github.com/improbable-eng/grpc-web/go/grpcweb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -51,8 +52,10 @@ func New(opts Options) *Server {
 
 // Options defines the options for a server.
 type Options struct {
-	RPCPort  int
-	RESTPort int
+	RPCPort     int // port for main gRPC server
+	RESTPort    int // port for a gRPC gateway - switched off if zero
+	GRPCWebPort int // port for a gRPC-Web server - switched off if zero
+
 	CertFile string
 	KeyFile  string
 }
@@ -93,70 +96,78 @@ func (sv *Server) RunServer() error {
 	signal.Notify(sigs, os.Interrupt, os.Kill, syscall.SIGTERM)
 	defer signal.Stop(sigs)
 
-	g, ctx := errgroup.WithContext(ctx)
-
-	// run gRPC server
-	var grpcServer *grpc.Server
-	g.Go(func() error {
-		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", sv.RPCPort))
+	// configure main gRPC server
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", sv.RPCPort))
+	if err != nil {
+		return fmt.Errorf("failed to initialize TCP listen: %v", err)
+	}
+	defer lis.Close()
+	opts := make([]grpc.ServerOption, 0)
+	if sv.auth != nil {
+		opts = append(opts, grpc.UnaryInterceptor(sv.unaryAuthInterceptor))
+		opts = append(opts, grpc.StreamInterceptor(sv.streamAuthInterceptor))
+	}
+	if sv.Options.CertFile != "" && sv.Options.KeyFile != "" {
+		creds, err := credentials.NewServerTLSFromFile(sv.Options.CertFile, sv.Options.KeyFile)
 		if err != nil {
-			return fmt.Errorf("failed to initialize TCP listen: %v", err)
+			return err
 		}
-		defer lis.Close()
-		opts := make([]grpc.ServerOption, 0)
-		if sv.auth != nil {
-			opts = append(opts, grpc.UnaryInterceptor(sv.unaryAuthInterceptor))
-			opts = append(opts, grpc.StreamInterceptor(sv.streamAuthInterceptor))
+		opts = append(opts, grpc.Creds(creds))
+	}
+	grpcServer := grpc.NewServer(opts...)
+	health.RegisterHealthServer(grpcServer, sv)
+	for name, provider := range sv.providers {
+		provider.RegisterServer(grpcServer)
+		log.Printf("server: registered '%s' service", name)
+	}
+
+	// configure HTTP reverse gateway
+	clientAddr := fmt.Sprintf("localhost:%d", sv.RPCPort)
+	addr := fmt.Sprintf(":%d", sv.RESTPort)
+	var dialOpts []grpc.DialOption
+	if sv.Options.CertFile == "" || sv.Options.KeyFile == "" {
+		dialOpts = append(dialOpts, grpc.WithInsecure())
+	} else {
+		creds, err := credentials.NewClientTLSFromFile(sv.Options.CertFile, "")
+		if err != nil {
+			return err
 		}
-		if sv.Options.CertFile != "" && sv.Options.KeyFile != "" {
-			creds, err := credentials.NewServerTLSFromFile(sv.Options.CertFile, sv.Options.KeyFile)
-			if err != nil {
-				return err
-			}
-			opts = append(opts, grpc.Creds(creds))
+		dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
+	}
+	mux := runtime.NewServeMux(
+		runtime.WithIncomingHeaderMatcher(headerMatcher),                                    // handle Accept-Language
+		runtime.WithMarshalerOption(runtime.MIMEWildcard, &runtime.JSONPb{OrigName: false}), // handle JSON camelcase
+	)
+	for name, provider := range sv.providers {
+		if err := provider.RegisterHTTPProxy(ctx, mux, clientAddr, dialOpts); err != nil {
+			log.Printf("server: failed to register reverse http proxy for '%s':%s", name, err)
+		} else {
+			log.Printf("server: registered reverse http proxy for '%s'", name)
 		}
-		grpcServer = grpc.NewServer(opts...)
-		health.RegisterHealthServer(grpcServer, sv)
-		for name, provider := range sv.providers {
-			provider.RegisterServer(grpcServer)
-			log.Printf("server: registered '%s' service", name)
+	}
+	httpServer := &http.Server{
+		Addr:         addr,
+		Handler:      mux,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
+
+	wrappedGrpc := grpcweb.WrapServer(grpcServer)
+	httpServer.Handler = http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
+		if wrappedGrpc.IsGrpcWebRequest(req) {
+			wrappedGrpc.ServeHTTP(resp, req)
 		}
+		// Fall back to other servers.
+		mux.ServeHTTP(resp, req)
+	})
+
+	// and now run the servers
+	g, ctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
 		log.Printf("server: gRPC Listening on %s\n", lis.Addr().String())
 		return grpcServer.Serve(lis)
 	})
-
-	// run HTTP gateway
-	var httpServer *http.Server
 	g.Go(func() error {
-		clientAddr := fmt.Sprintf("localhost:%d", sv.RPCPort)
-		addr := fmt.Sprintf(":%d", sv.RESTPort)
-		var dialOpts []grpc.DialOption
-		if sv.Options.CertFile == "" || sv.Options.KeyFile == "" {
-			dialOpts = append(dialOpts, grpc.WithInsecure())
-		} else {
-			creds, err := credentials.NewClientTLSFromFile(sv.Options.CertFile, "")
-			if err != nil {
-				return err
-			}
-			dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
-		}
-		mux := runtime.NewServeMux(
-			runtime.WithIncomingHeaderMatcher(headerMatcher),                                    // handle Accept-Language
-			runtime.WithMarshalerOption(runtime.MIMEWildcard, &runtime.JSONPb{OrigName: false}), // handle JSON camelcase
-		)
-		for name, provider := range sv.providers {
-			if err := provider.RegisterHTTPProxy(ctx, mux, clientAddr, dialOpts); err != nil {
-				log.Printf("server: failed to register reverse http proxy for '%s':%s", name, err)
-			} else {
-				log.Printf("server: registered reverse http proxy for '%s'", name)
-			}
-		}
-		httpServer = &http.Server{
-			Addr:         addr,
-			Handler:      mux,
-			ReadTimeout:  5 * time.Second,
-			WriteTimeout: 10 * time.Second,
-		}
 		if sv.Options.CertFile == "" || sv.Options.KeyFile == "" {
 			log.Printf("server: http listening on %s (not using https: no certificate or key specified)", addr)
 			return httpServer.ListenAndServe()
