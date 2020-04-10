@@ -11,10 +11,10 @@ import (
 	"syscall"
 	"time"
 
-	"golang.org/x/sync/errgroup"
-
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
+	"github.com/rs/cors"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -152,6 +152,7 @@ func (sv *Server) RunServer() error {
 		WriteTimeout: 10 * time.Second,
 	}
 
+	// add gRPC-Web server
 	wrappedGrpc := grpcweb.WrapServer(grpcServer)
 	httpServer.Handler = http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
 		if wrappedGrpc.IsGrpcWebRequest(req) {
@@ -160,6 +161,9 @@ func (sv *Server) RunServer() error {
 		// Fall back to other servers.
 		mux.ServeHTTP(resp, req)
 	})
+
+	// add CORS configuration
+	httpServer.Handler = cors.Default().Handler(httpServer.Handler)
 
 	// and now run the servers
 	g, ctx := errgroup.WithContext(ctx)
