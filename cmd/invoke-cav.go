@@ -24,8 +24,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"github.com/wardle/concierge/apiv1"
-	"github.com/wardle/concierge/cav"
 	"github.com/wardle/concierge/identifiers"
+	"github.com/wardle/concierge/wales/cav"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -52,10 +52,12 @@ var invokeCavdocCmd = &cobra.Command{
 			log.Fatal(err)
 		}
 		receipt, err := pms.PublishDocument(ctx, &apiv1.PublishDocumentRequest{
-			Id:      &apiv1.Identifier{System: identifiers.UUID, Value: uuid.New().String()},
-			Patient: pt,
-			Title:   "Test letter from concierge",
-			Data:    &apiv1.Attachment{ContentType: "application/pdf", Data: pdf},
+			Document: &apiv1.Document{
+				Id:      &apiv1.Identifier{System: identifiers.UUID, Value: uuid.New().String()},
+				Patient: pt,
+				Title:   "Test letter from concierge",
+				Data:    &apiv1.Attachment{ContentType: "application/pdf", Data: pdf},
+			},
 		})
 		if err != nil {
 			log.Fatal(err)

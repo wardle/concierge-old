@@ -25,8 +25,8 @@ import (
 	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/wardle/concierge/apiv1"
-	"github.com/wardle/concierge/cav/soappms"
 	"github.com/wardle/concierge/identifiers"
+	"github.com/wardle/concierge/wales/cav/soap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -124,32 +124,40 @@ func (pms *PMSService) PatientsForClinics(ctx context.Context, date time.Time, c
 }
 
 // PublishDocument publishes the document into the CAV document repository
+// returning a receipt, which currently includes the identifier. You'll be able to (eventually)
+// resolve that identifier and get back the document, or perhaps another URL.
 func (pms *PMSService) PublishDocument(ctx context.Context, r *apiv1.PublishDocumentRequest) (*apiv1.PublishDocumentResponse, error) {
-	cavID, ok := r.GetPatient().GetIdentifierForSystem(identifiers.CardiffAndValeCRN)
+	d := r.GetDocument()
+	cavIDs, ok := d.GetPatient().GetIdentifiersForSystem(identifiers.CardiffAndValeCRN)
 	if !ok {
-		log.Printf("cav: unable to publish document '%s|%s' as no CRN identified for Cardiff and Vale", r.GetId().GetSystem(), r.GetId().GetValue())
+		log.Printf("cav: unable to publish document '%s|%s' as no CRN identified for Cardiff and Vale", d.GetId().GetSystem(), d.GetId().GetValue())
 		return nil, fmt.Errorf("unable to publish document - no valid Cardiff and Vale identifier")
 	}
-	if r.GetData().GetContentType() != "application/pdf" {
-		log.Printf("cav: unable to publish document '%s|%s': wrong content-type expected: 'application/pdf' got: '%s'", r.GetId().GetSystem(), r.GetId().GetValue(), r.GetData().GetContentType())
-		return nil, fmt.Errorf("unable to publish document - incorrect content-type '%s'", r.GetData().GetContentType())
+	if d.GetData().GetContentType() != "application/pdf" {
+		log.Printf("cav: unable to publish document '%s|%s': wrong content-type expected: 'application/pdf' got: '%s'", d.GetId().GetSystem(), d.GetId().GetValue(), d.GetData().GetContentType())
+		return nil, fmt.Errorf("unable to publish document - incorrect content-type '%s'", d.GetData().GetContentType())
 	}
+	cavID := cavIDs[0] // use the first found identifier - underlying service should handle the issue of merged identifiers
 	// check that this CRN is correct by fetching against live PAS - basic sanity check in case wrong CRN
 	pt, err := pms.FetchPatient(ctx, cavID.GetValue())
 	if err != nil {
 		return nil, err
 	}
-	if !proto.Equal(r.GetPatient().GetBirthDate(), pt.GetBirthDate()) || r.GetPatient().GetLastname() != pt.GetLastname() || r.GetPatient().GetGender() != pt.GetGender() {
-		log.Printf("cav: unable to publish document '%s|%s': patient details don't match PAS", r.GetId().GetSystem(), r.GetId().GetValue())
-		f := protojson.MarshalOptions{Indent: "", Multiline: false}
-		log.Printf("cav: request: %s", f.Format(r.GetPatient()))
-		log.Printf("cav: pas    : %s", f.Format(pt))
+	if !proto.Equal(d.GetPatient().GetBirthDate(), pt.GetBirthDate()) || d.GetPatient().GetLastname() != pt.GetLastname() || d.GetPatient().GetGender() != pt.GetGender() {
+		log.Printf("cav: unable to publish document '%s|%s': patient details don't match PAS", d.GetId().GetSystem(), d.GetId().GetValue())
+		log.Printf("cav: request: %s", protojson.MarshalOptions{}.Format(d.GetPatient()))
+		log.Printf("cav: pas    : %s", protojson.MarshalOptions{}.Format(pt))
 		return nil, errors.New("unable to publish document: patient demographics don't match that in PAS")
 	}
-	uid := r.GetId().GetSystem() + "|" + r.GetId().GetValue()
+	var uid string // our unique identifier is made up of system|value unless system==uuid, in which case just a value
+	if d.GetId().GetSystem() == identifiers.UUID {
+		uid = d.GetId().GetValue()
+	} else {
+		uid = d.GetId().GetSystem() + "|" + d.GetId().GetValue()
+	}
 	ctx, cancelFunc := context.WithTimeout(ctx, pms.timeout)
 	defer cancelFunc()
-	docID, err := performReceiveFileByCRN(ctx, cavID.GetValue(), uid, "GENERAL LETTER", r.GetTitle(), r.GetData().GetData())
+	docID, err := performReceiveFileByCRN(ctx, cavID.GetValue(), uid, "GENERAL LETTER", d.GetTitle(), d.GetData().GetData())
 	if err != nil {
 		return nil, err
 	}
@@ -263,11 +271,11 @@ func performGetData(ctx context.Context, xmlData string, result interface{}) err
 
 // this uses a SOAP call, because the HTTP POST failed to work with base64 encoding for some reason
 func performReceiveFileByCRN(ctx context.Context, crn string, uid string, key string, source string, pdfData []byte) (string, error) {
-	soap := soappms.NewPMSInterfaceWebServiceSoap("http://cav-wcp02.cardiffandvale.wales.nhs.uk/PmsInterface/WebService/PMSInterfaceWebService.asmx", false, nil)
+	service := soap.NewPMSInterfaceWebServiceSoap("http://cav-wcp02.cardiffandvale.wales.nhs.uk/PmsInterface/WebService/PMSInterfaceWebService.asmx", false, nil)
 	fileType := ".pdf"
 	data := []byte(base64.StdEncoding.EncodeToString(pdfData))
-	response, err := soap.ReceiveFileByCrn(&soappms.ReceiveFileByCrn{
-		BfsId:       "test",
+	response, err := service.ReceiveFileByCrn(&soap.ReceiveFileByCrn{
+		BfsId:       uid, // unfortunately, this must be 15 digits or less
 		Crn:         crn,
 		Key:         key,
 		Source:      source,

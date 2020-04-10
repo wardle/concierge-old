@@ -26,8 +26,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/wardle/concierge/apiv1"
-	"github.com/wardle/concierge/empi"
 	"github.com/wardle/concierge/identifiers"
+	"github.com/wardle/concierge/wales/empi"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 

@@ -7,12 +7,12 @@ import (
 	"github.com/patrickmn/go-cache"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/wardle/concierge/cav"
-	"github.com/wardle/concierge/empi"
 	"github.com/wardle/concierge/identifiers"
-	"github.com/wardle/concierge/nadex"
 	"github.com/wardle/concierge/server"
 	"github.com/wardle/concierge/terminology"
+	"github.com/wardle/concierge/wales/cav"
+	"github.com/wardle/concierge/wales/empi"
+	"github.com/wardle/concierge/wales/nadex"
 )
 
 // serveCmd represents the serve command

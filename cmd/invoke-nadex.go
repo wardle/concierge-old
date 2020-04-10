@@ -23,7 +23,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/wardle/concierge/apiv1"
 	"github.com/wardle/concierge/identifiers"
-	"github.com/wardle/concierge/nadex"
+	"github.com/wardle/concierge/wales/nadex"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 

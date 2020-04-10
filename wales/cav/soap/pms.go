@@ -1,5 +1,5 @@
 // This was generated using gowsdl and then modified to fix unmarshalling errors
-package soappms
+package soap
 
 import (
 	"bytes"

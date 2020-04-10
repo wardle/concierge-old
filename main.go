@@ -18,7 +18,7 @@ package main
 import (
 	"github.com/wardle/concierge/cmd"
 	_ "github.com/wardle/concierge/fhir"
-	_ "github.com/wardle/concierge/sds"
+	_ "github.com/wardle/concierge/england/sds"
 )
 
 // Version injected at build time

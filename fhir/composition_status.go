@@ -57,20 +57,20 @@ var compositionStatusCodes = [...]string{
 	"entered-in-error",
 }
 
-// ToProtobuf maps this composition status to the protobuf equivalent
-func (cs CompositionStatus) ToProtobuf() apiv1.CompositionStatus_Status {
+// ToProtobuf maps this composition status to the concierge equivalent
+func (cs CompositionStatus) ToConcierge() apiv1.Document_Status {
 	if cs < CompositionStatusUnknown || cs >= CompositionStatusLast {
-		return compositionStatusToProtobuf[CompositionStatusUnknown]
+		return compositionStatusToConcierge[CompositionStatusUnknown]
 	}
-	return compositionStatusToProtobuf[cs]
+	return compositionStatusToConcierge[cs]
 }
 
-var compositionStatusToProtobuf = [...]apiv1.CompositionStatus_Status{
-	apiv1.CompositionStatus_UNKNOWN,
-	apiv1.CompositionStatus_DRAFT,
-	apiv1.CompositionStatus_FINAL,
-	apiv1.CompositionStatus_AMENDED,
-	apiv1.CompositionStatus_IN_ERROR,
+var compositionStatusToConcierge = [...]apiv1.Document_Status{
+	apiv1.Document_UNKNOWN,
+	apiv1.Document_DRAFT,
+	apiv1.Document_FINAL,
+	apiv1.Document_AMENDED,
+	apiv1.Document_IN_ERROR,
 }
 
 // ToSctID returns the SNOMED identifier representing this composition status
@@ -141,9 +141,10 @@ func init() {
 func compositionStatusResolver(ctx context.Context, id *apiv1.Identifier) (proto.Message, error) {
 	cs := LookupCompositionStatus(id.GetValue())
 	if cs != CompositionStatusUnknown {
-		log.Printf("fhir: resolving %s|%s to %s", id.System, id.Value, cs.ToProtobuf())
-		return &apiv1.CompositionStatus{
-			Status: cs.ToProtobuf(),
+		log.Printf("fhir: resolving %s|%s to %s", id.System, id.Value, cs.ToConcierge())
+		return &apiv1.Identifier{
+			System: identifiers.ConciergeDocumentStatus,
+			Value:  cs.ToConcierge().Enum().String(),
 		}, nil
 	}
 	return nil, status.Errorf(codes.NotFound, "no composition status found matching code: '%s'", id.GetValue())

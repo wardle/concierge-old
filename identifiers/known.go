@@ -46,6 +46,7 @@ const (
 	CompositionStatus = "http://hl7.org/fhir/composition-status" // see https://www.hl7.org/fhir/valueset-composition-status.html
 
 	// Concierge service user
-	ConciergeServiceUser = "https://concierge.eldrix.com/Id/service-user"
-	PatientCare          = "https://patientcare.eldrix.com/Id/patientcare-application"
+	ConciergeServiceUser    = "https://concierge.eldrix.com/Id/service-user"
+	ConciergeDocumentStatus = "https://concierge.eldrix.com/Id/document-status"
+	PatientCare             = "https://patientcare.eldrix.com/Id/patientcare-application"
 )

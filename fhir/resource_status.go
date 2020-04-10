@@ -1,6 +1,6 @@
 package fhir
 
-// ResourceStatus represents a FHIR composition status
+// ResourceStatus represents a FHIR resource status
 type ResourceStatus int
 
 const (
@@ -56,7 +56,7 @@ func init() {
 	}
 }
 
-// LookResourceStatus returns the ResourceStatus for the specified code
+// LookupResourceStatus returns the ResourceStatus for the specified code
 func LookupResourceStatus(code string) ResourceStatus {
 	return resourceStatusLookup[code]
 }
