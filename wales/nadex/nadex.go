@@ -51,6 +51,9 @@ var _ apiv1.PractitionerDirectoryServer = (*App)(nil)
 
 // RegisterServer registers this server
 func (app *App) RegisterServer(s *grpc.Server) {
+	if app.Username == "" || app.Password == "" {
+		log.Printf("nadex: warning! no credentials provided for NADEX lookup. ")
+	}
 	apiv1.RegisterPractitionerDirectoryServer(s, app)
 }
 
@@ -104,6 +107,9 @@ func (app *App) GetPractitioner(ctx context.Context, r *apiv1.Identifier) (*apiv
 		Port:     389,
 		BaseDN:   "OU=Users,DC=cymru,DC=nhs,DC=uk",
 		Security: auth.SecurityNone,
+	}
+	if app.Username == "" {
+		return nil, fmt.Errorf("nadex: no credentials provided for directory lookup")
 	}
 	// for the moment, we use the fallback username/password configured - TODO: use user who is making request's own credentials
 	auth, err := auth.Authenticate(config, app.Username, app.Password)
@@ -194,12 +200,11 @@ func (app *App) GetPractitioner(ctx context.Context, r *apiv1.Identifier) (*apiv
 	}
 	user := &apiv1.Practitioner{
 		Active: true,
-		Names: []*apiv1.HumanName{
-			&apiv1.HumanName{
-				Given:  entry.GetAttributeValue("givenName"),
-				Family: entry.GetAttributeValue("sn"),
-				Use:    apiv1.HumanName_OFFICIAL,
-			},
+		Names: []*apiv1.HumanName{{
+			Given:  entry.GetAttributeValue("givenName"),
+			Family: entry.GetAttributeValue("sn"),
+			Use:    apiv1.HumanName_OFFICIAL,
+		},
 		},
 		Emails: []string{
 			entry.GetAttributeValue("mail"),
@@ -209,7 +214,7 @@ func (app *App) GetPractitioner(ctx context.Context, r *apiv1.Identifier) (*apiv
 	}
 	if title := entry.GetAttributeValue("title"); title != "" {
 		user.Roles = []*apiv1.PractitionerRole{
-			&apiv1.PractitionerRole{Role: &apiv1.Role{JobTitle: title}},
+			{Role: &apiv1.Role{JobTitle: title}},
 		}
 	}
 	log.Printf("nadex: returning user: %+v", user)
@@ -222,14 +227,14 @@ func (app *App) GetFakePractitioner(ctx context.Context, r *apiv1.Identifier) (*
 		Active: true,
 		Emails: []string{"wibble@wobble.org"},
 		Names: []*apiv1.HumanName{
-			&apiv1.HumanName{Given: "Fred", Family: "Flintstone", Prefixes: []string{"Mr"}},
+			{Given: "Fred", Family: "Flintstone", Prefixes: []string{"Mr"}},
 		},
 		Roles: []*apiv1.PractitionerRole{
-			&apiv1.PractitionerRole{Role: &apiv1.Role{JobTitle: "Consultant Neurologist"}},
+			{Role: &apiv1.Role{JobTitle: "Consultant Neurologist"}},
 		},
 		Identifiers: []*apiv1.Identifier{
-			&apiv1.Identifier{System: identifiers.CymruUserID, Value: r.GetValue()},
-			&apiv1.Identifier{System: identifiers.GMCNumber, Value: "4624000"},
+			{System: identifiers.CymruUserID, Value: r.GetValue()},
+			{System: identifiers.GMCNumber, Value: "4624000"},
 		},
 	}
 	log.Printf("nadex: returning fake practitioner: %+v", p)
@@ -240,6 +245,9 @@ func (app *App) GetFakePractitioner(ctx context.Context, r *apiv1.Identifier) (*
 func (app *App) Authenticate(id *apiv1.Identifier, credential string) (bool, error) {
 	if id.GetSystem() != identifiers.CymruUserID {
 		return false, fmt.Errorf("nadex: unsupported uri: %s", id.GetSystem())
+	}
+	if app.Fake {
+		return credential == "password", nil
 	}
 	cfg, err := config.NewConfigFromString(krbConfig)
 	if err != nil {
