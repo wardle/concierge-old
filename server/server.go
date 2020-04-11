@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
-	"github.com/improbable-eng/grpc-web/go/grpcweb"
 	"github.com/rs/cors"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
@@ -152,18 +151,21 @@ func (sv *Server) RunServer() error {
 		WriteTimeout: 10 * time.Second,
 	}
 
-	// add gRPC-Web server
-	wrappedGrpc := grpcweb.WrapServer(grpcServer)
-	httpServer.Handler = http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
-		if wrappedGrpc.IsGrpcWebRequest(req) {
-			wrappedGrpc.ServeHTTP(resp, req)
-		}
-		// Fall back to other servers.
-		mux.ServeHTTP(resp, req)
-	})
-
 	// add CORS configuration
-	httpServer.Handler = cors.Default().Handler(httpServer.Handler)
+	log.Printf("server: warning: using CORS 'allow-all' permissions")
+	httpServer.Handler = cors.New(cors.Options{
+		AllowedOrigins: []string{"*"},
+		AllowedMethods: []string{
+			http.MethodHead,
+			http.MethodGet,
+			http.MethodPost,
+			http.MethodPut,
+			http.MethodPatch,
+			http.MethodDelete,
+		},
+		AllowedHeaders:   []string{"*"},
+		ExposedHeaders:   []string{"*"},
+		AllowCredentials: true}).Handler(httpServer.Handler)
 
 	// and now run the servers
 	g, ctx := errgroup.WithContext(ctx)
