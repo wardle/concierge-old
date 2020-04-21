@@ -322,7 +322,7 @@ func performRequest(ctx context.Context, endpointURL string, post string, result
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("error publishing document. client.do: %s", err)
+		log.Printf("cav: request error. client.do: %s", err)
 		return err
 	}
 	defer resp.Body.Close()
@@ -331,9 +331,9 @@ func performRequest(ctx context.Context, endpointURL string, post string, result
 		return err
 	}
 	if resp.StatusCode != 200 {
-		log.Printf("cav: server error publishing document: %+v", resp)
+		log.Printf("cav: received error response: %+v", resp)
 		log.Printf("body: %v", string(body))
-		return errors.New("error publishing document: remote service error")
+		return errors.New("remote service error")
 	}
 	return xml.Unmarshal(body, result)
 }
@@ -428,7 +428,7 @@ func parseCRN(crn string) (*pmsCRN, error) {
 	crn = strings.ToUpper(crn)
 	switch len(crn) {
 	case 8:
-		crn = crn[0:6]
+		crn = crn[0:7]
 		fallthrough
 	case 7:
 		return &pmsCRN{Type: string(crn[0]), CRN: crn[1:7]}, nil
@@ -497,6 +497,7 @@ func parsePatientAndAddresses(rows []map[string]string) (*apiv1.Patient, error) 
 		address.Period = &apiv1.Period{Start: from, End: to}
 		pt.Addresses = append(pt.Addresses, address)
 	}
+	log.Printf("patient: %s", protojson.MarshalOptions{}.Format(pt))
 	return pt, nil
 }
 
