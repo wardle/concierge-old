@@ -1,5 +1,11 @@
 package identifiers
 
+import (
+	"context"
+
+	"github.com/wardle/concierge/apiv1"
+)
+
 // list of built-in supported systems (although extendable at runtime and by importing other packages)
 const (
 
@@ -50,3 +56,21 @@ const (
 	ConciergeDocumentStatus = "https://concierge.eldrix.com/Id/document-status"
 	PatientCare             = "https://patientcare.eldrix.com/Id/patientcare-application"
 )
+
+func init() {
+	RegisterMapper(URI, ODSSiteCode, mapURItoODSSiteCode)
+}
+
+var uriToODSSiteCodeMap = map[string]string{
+	CardiffAndValeCRN: "RWMBV", // UHW
+	CwmTafCRN:         "RYLB3", // Prince Charles Hospital
+	SwanseaBayCRN:     "RYMC7", // Morriston Hospital
+	AneurinBevanCRN:   "RVFAR", // Royal Gwent Hospital
+}
+
+func mapURItoODSSiteCode(ctx context.Context, id *apiv1.Identifier, f func(*apiv1.Identifier) error) error {
+	if mapped := uriToODSSiteCodeMap[id.Value]; mapped != "" {
+		return f(&apiv1.Identifier{System: ODSSiteCode, Value: mapped})
+	}
+	return nil
+}

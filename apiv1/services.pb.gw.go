@@ -153,30 +153,12 @@ func local_request_Identifiers_GetIdentifier_0(ctx context.Context, marshaler ru
 }
 
 var (
-	filter_Identifiers_MapIdentifier_0 = &utilities.DoubleArray{Encoding: map[string]int{"value": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
+	filter_Identifiers_MapIdentifier_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
 )
 
 func request_Identifiers_MapIdentifier_0(ctx context.Context, marshaler runtime.Marshaler, client IdentifiersClient, req *http.Request, pathParams map[string]string) (Identifiers_MapIdentifierClient, runtime.ServerMetadata, error) {
 	var protoReq IdentifierMapRequest
 	var metadata runtime.ServerMetadata
-
-	var (
-		val string
-		ok  bool
-		err error
-		_   = err
-	)
-
-	val, ok = pathParams["value"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "value")
-	}
-
-	protoReq.Value, err = runtime.String(val)
-
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "value", err)
-	}
 
 	if err := req.ParseForm(); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
@@ -640,7 +622,7 @@ func RegisterIdentifiersHandlerClient(ctx context.Context, mux *runtime.ServeMux
 var (
 	pattern_Identifiers_GetIdentifier_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2}, []string{"v1", "identifier", "value"}, "", runtime.AssumeColonVerbOpt(true)))
 
-	pattern_Identifiers_MapIdentifier_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 2, 3}, []string{"v1", "identifier", "value", "map"}, "", runtime.AssumeColonVerbOpt(true)))
+	pattern_Identifiers_MapIdentifier_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"v1", "map"}, "", runtime.AssumeColonVerbOpt(true)))
 )
 
 var (
