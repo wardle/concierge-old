@@ -21,7 +21,7 @@ var serveCmd = &cobra.Command{
 	Short: "Starts a server (gRPC and REST)",
 	Long:  `Starts a server (gRPC and REST)`,
 	Run: func(cmd *cobra.Command, args []string) {
-		log.Printf("========== starting concierge ==========")
+		log.Printf("========== starting concierge v%s ==========", rootCmd.Version)
 		my := createServers()
 
 		// start server
