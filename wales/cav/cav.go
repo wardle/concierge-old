@@ -27,6 +27,7 @@ import (
 	"github.com/wardle/concierge/apiv1"
 	"github.com/wardle/concierge/identifiers"
 	"github.com/wardle/concierge/wales/cav/soap"
+	"github.com/wardle/concierge/wales/empi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -39,6 +40,7 @@ type PMSService struct {
 	username string
 	password string
 	timeout  time.Duration
+	fake     bool
 
 	tokenMu      sync.RWMutex
 	token        string
@@ -46,14 +48,18 @@ type PMSService struct {
 }
 
 // NewPMSService creates a new (thread-safe) PMS Service with the specified timeout
-func NewPMSService(username string, password string, timeout time.Duration) *PMSService {
+func NewPMSService(username string, password string, timeout time.Duration, fake bool) *PMSService {
 	if len(username) == 0 || len(password) == 0 {
-		log.Fatal("no username / password for CAV PMS service")
+		log.Printf("cav: warning: no username / password for CAV PMS service")
+	}
+	if fake {
+		log.Printf("cav: running in fake mode")
 	}
 	return &PMSService{
 		username: username,
 		password: password,
 		timeout:  timeout,
+		fake:     fake,
 	}
 }
 
@@ -69,6 +75,17 @@ func (pms *PMSService) ResolveIdentifier(ctx context.Context, id *apiv1.Identifi
 // FetchPatient fetches patient data from the CAV PAS (PMS)
 // This query returns multiple rows for a single patient because of the address history
 func (pms *PMSService) FetchPatient(ctx context.Context, crn string) (*apiv1.Patient, error) {
+	if pms.fake {
+		if crn != "A999998" {
+			return nil, status.Errorf(codes.NotFound, "No patient found with identifier %s", crn)
+		}
+		result, err := (&empi.App{Fake: true}).ResolveIdentifier(ctx, &apiv1.Identifier{Value: crn})
+		if err != nil {
+			return nil, err
+		}
+		return result.(*apiv1.Patient), nil
+	}
+
 	ctx, cancelFunc := context.WithTimeout(ctx, pms.timeout)
 	defer cancelFunc()
 	token, err := pms.authenticationToken(ctx)
@@ -85,7 +102,7 @@ func (pms *PMSService) FetchPatient(ctx context.Context, crn string) (*apiv1.Pat
 		return nil, err
 	}
 	if len(pts) == 0 {
-		return nil, fmt.Errorf("No patient found with identifier '%s'", crn)
+		return nil, status.Errorf(codes.NotFound, "No patient found with identifier '%s'", crn)
 	}
 	return parsePatientAndAddresses(pts)
 }
@@ -433,7 +450,7 @@ func parseCRN(crn string) (*pmsCRN, error) {
 	case 7:
 		return &pmsCRN{Type: string(crn[0]), CRN: crn[1:7]}, nil
 	default:
-		return nil, fmt.Errorf("Invalid CRN: '%s'", crn)
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid CRN: '%s'", crn)
 	}
 }
 

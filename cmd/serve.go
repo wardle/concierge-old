@@ -73,7 +73,7 @@ func createServers() *myServer {
 	identifiers.RegisterResolver(identifiers.SwanseaBayCRN, my.empi.ResolveIdentifier)
 
 	// Cardiff and Vale PMS
-	my.cav = cav.NewPMSService(viper.GetString("cav-pms-username"), viper.GetString("cav-pms-password"), 10*time.Second)
+	my.cav = cav.NewPMSService(viper.GetString("cav-pms-username"), viper.GetString("cav-pms-password"), 10*time.Second, viper.GetBool("fake"))
 	identifiers.RegisterResolver(identifiers.CardiffAndValeCRN, my.cav.ResolveIdentifier)
 
 	// terminology server

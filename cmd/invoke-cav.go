@@ -40,7 +40,7 @@ var invokeCavdocCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(4),
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := context.Background()
-		pms := cav.NewPMSService(args[0], args[1], 5*time.Second)
+		pms := cav.NewPMSService(args[0], args[1], 5*time.Second, false)
 		pt, err := pms.FetchPatient(ctx, args[2])
 		if err != nil {
 			log.Fatal(err)
@@ -72,7 +72,7 @@ var invokeCavclinicCmd = &cobra.Command{
 	Args:  cobra.MinimumNArgs(3),
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := context.Background()
-		pms := cav.NewPMSService(args[0], args[1], 5*time.Second)
+		pms := cav.NewPMSService(args[0], args[1], 5*time.Second, false)
 		date, err := time.Parse("2006/01/02", args[2])
 		if err != nil {
 			log.Fatal(err)
