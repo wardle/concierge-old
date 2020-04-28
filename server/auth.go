@@ -23,6 +23,9 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+const defaultTokenDuration = 60 * time.Minute
+const serviceAccountTokenDuration = 72 * time.Hour
+
 var (
 	// ErrInvalidToken means that there was an invalid or missing authorization token
 	ErrInvalidToken = errors.New("invalid authorization token")
@@ -93,9 +96,6 @@ func (auth *Auth) RegisterAuthProvider(uri string, name string, ap AuthProvider,
 	}
 	log.Printf("auth: registered authentication provider for namespace uri: '%s': %s", uri, name)
 }
-
-var defaultTokenDuration = 5 * time.Minute
-var serviceAccountTokenDuration = 72 * time.Hour
 
 // Login performs an authentication.
 // User account login can only be performed with an already logged in service account
