@@ -5,7 +5,6 @@ package identifiers
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"sort"
 	"sync"
@@ -60,7 +59,7 @@ func Resolve(ctx context.Context, id *apiv1.Identifier) (proto.Message, error) {
 	resolver, ok := resolvers[id.GetSystem()]
 	resolversMu.RUnlock()
 	if !ok {
-		return nil, fmt.Errorf("unable to resolve '%s|%s': %w", id.GetSystem(), id.GetValue(), ErrNoResolver)
+		return nil, status.Errorf(codes.NotFound, "unable to resolve '%s|%s': %w", id.GetSystem(), id.GetValue(), ErrNoResolver)
 	}
 	return resolver(ctx, id)
 }
