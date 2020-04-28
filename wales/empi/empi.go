@@ -194,30 +194,35 @@ func performFake(authority Authority, identifier string) (*apiv1.Patient, error)
 		return nil, err
 	}
 	return &apiv1.Patient{
-		Lastname:            "DUMMY",
-		Firstnames:          "ALBERT",
-		Title:               "DR",
-		Gender:              apiv1.Gender_MALE,
-		BirthDate:           dob,
+		Lastname:   "DUMMY",
+		Firstnames: "ALBERT",
+		Title:      "DR",
+		Gender:     apiv1.Gender_MALE,
+		BirthDate:  dob,
+		//		Deceased:            &apiv1.Patient_DeceasedDate{DeceasedDate: dob},
 		Surgery:             "W95010",
 		GeneralPractitioner: "G9342400",
 		Identifiers: []*apiv1.Identifier{
-			&apiv1.Identifier{
+			{
 				System: authority.empiOrganisationCode(),
 				Value:  identifier,
 			},
-			&apiv1.Identifier{
+			{
 				System: "103",
 				Value:  "M1147907",
 			},
-			&apiv1.Identifier{
+			{
 				System: identifiers.CardiffAndValeCRN,
 				Value:  "X234567",
+			},
+			{
+				System: identifiers.NHSNumber,
+				Value:  "1111111111",
 			},
 		},
 
 		Addresses: []*apiv1.Address{
-			&apiv1.Address{
+			{
 				Address1: "59 Robins Hill",
 				Address2: "Brackla",
 				Address3: "Bridgend",
@@ -226,12 +231,16 @@ func performFake(authority Authority, identifier string) (*apiv1.Patient, error)
 			},
 		},
 		Telephones: []*apiv1.Telephone{
-			&apiv1.Telephone{
-				Number:      "02920747747",
+			{
+				Number:      "02920 747747",
 				Description: "Home",
 			},
+			{
+				Number:      "02920 711711",
+				Description: "Mobile",
+			},
 		},
-		Emails: []string{"test@test.com"},
+		Emails: []string{"test@test.com", "wibble@test.com"},
 	}, nil
 }
 
