@@ -54,6 +54,9 @@ func (app *App) RegisterServer(s *grpc.Server) {
 	if app.Username == "" || app.Password == "" {
 		log.Printf("nadex: warning! no credentials provided for NADEX lookup. ")
 	}
+	if app.Fake {
+		log.Printf("nadex: running in fake mode")
+	}
 	apiv1.RegisterPractitionerDirectoryServer(s, app)
 }
 
