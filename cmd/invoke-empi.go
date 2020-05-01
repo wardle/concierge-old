@@ -58,16 +58,10 @@ concierge test empi 7253698428`,
 		default:
 			log.Fatalf("incorrect number of arguments: %v. expected [system] identifier", args)
 		}
-		endpoint := empi.LookupEndpoint(cmd.Flag("endpoint").Value.String())
-		endpointURL := endpoint.URL()
-		if cmd.Flag("endpointURL").Value.String() != "" {
-			endpointURL = cmd.Flag("endpointURL").Value.String()
-		}
-		log.Printf("executing against endpoint: %s, URL: %s", endpoint.Name(), endpointURL)
-		if endpointURL == "" {
-			log.Fatalf("invalid endpoint URL")
-		}
-		empiSvc := empi.App{Endpoint: endpoint, EndpointURL: endpointURL}
+		endpointURL := cmd.Flag("endpointURL").Value.String()
+		processingID := cmd.Flag("processingID").Value.String()
+		log.Printf("executing against endpoint: %s processing ID: %s", endpointURL, processingID)
+		empiSvc := empi.App{EndpointURL: endpointURL, ProcessingID: processingID}
 		pt, err := empiSvc.GetEMPIRequest(context.Background(), &apiv1.Identifier{System: system, Value: value})
 		if err != nil {
 			log.Fatal(err)
@@ -78,7 +72,8 @@ concierge test empi 7253698428`,
 
 func init() {
 	invokeCmd.AddCommand(empiCmd)
-	empiCmd.PersistentFlags().String("endpoint", "D", "(P)roduction, (T)esting or (D)evelopment")
-	empiCmd.MarkFlagRequired("endpoint")
 	empiCmd.PersistentFlags().String("endpointURL", "", "URL for endpoint (if different to default for P/T/D")
+	empiCmd.MarkFlagRequired("endpointURL")
+	empiCmd.PersistentFlags().String("processingID", "", "processing ID. P:production U:user acceptance testing T:development")
+	empiCmd.MarkFlagRequired("processingID")
 }

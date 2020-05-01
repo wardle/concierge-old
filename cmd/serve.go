@@ -134,25 +134,17 @@ func nadexServer() *nadex.App {
 }
 
 func walesEmpiServer() *empi.App {
-	empiApp := new(empi.App)
-	empiEndpoint := viper.GetString("empi-endpoint")
-	endpoint := empi.LookupEndpoint(empiEndpoint)
-	if endpoint == empi.UnknownEndpoint {
-		log.Fatalf("unknown endpoint: %v", empiEndpoint)
+	empiApp := &empi.App{
+		EndpointURL:    viper.GetString("empi-url"),
+		ProcessingID:   viper.GetString("empi-processing-id"),
+		Fake:           viper.GetBool("fake"),
+		TimeoutSeconds: viper.GetInt("empi-timeout-seconds"),
 	}
-	empiApp.Endpoint = endpoint
-	if endpointURL := viper.GetString("empi-endpoint-url"); endpointURL != "" {
-		empiApp.EndpointURL = endpointURL
-	} else {
-		empiApp.EndpointURL = endpoint.URL()
-	}
-	empiApp.Fake = viper.GetBool("fake")
-	empiApp.TimeoutSeconds = viper.GetInt("empi-timeout-seconds")
 	cacheMinutes := viper.GetInt("empi-cache-minutes")
 	if cacheMinutes != 0 {
 		empiApp.Cache = cache.New(time.Duration(cacheMinutes)*time.Minute, time.Duration(cacheMinutes*2)*time.Minute)
 	}
-	log.Printf("empi configuration: cache:%dm timeout:%ds endpoint:(%s)%s", cacheMinutes, empiApp.TimeoutSeconds, endpoint.Name(), empiApp.EndpointURL)
+	log.Printf("empi configuration: cache:%dm timeout:%ds endpoint:%s", cacheMinutes, empiApp.TimeoutSeconds, empiApp.EndpointURL)
 	return empiApp
 }
 

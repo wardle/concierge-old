@@ -30,71 +30,10 @@ import (
 	"github.com/patrickmn/go-cache"
 )
 
-// Endpoint represents a specific SOAP server providing access to "enterprise master patient index" (EMPI) data
-type Endpoint int
-
-// A list of endpoints
-const (
-	UnknownEndpoint     Endpoint = iota // unknown
-	ProductionEndpoint                  // production server
-	TestingEndpoint                     // user acceptance testing
-	DevelopmentEndpoint                 // development
-)
-
-var endpointURLs = [...]string{
-	"",
-	"https://mpilivequeries.cymru.nhs.uk/PatientDemographicsQueryWS.asmx",
-	"https://mpitest.cymru.nhs.uk/PatientDemographicsQueryWS.asmx",
-	"http://ndc06srvmpidev2.cymru.nhs.uk:23000/PatientDemographicsQueryWS.asmx",
-}
-
-var endpointNames = [...]string{
-	"unknown",
-	"production",
-	"testing",
-	"development",
-}
-
-var endpointCodes = [...]string{
-	"",
-	"P",
-	"U",
-	"T",
-}
-
-// LookupEndpoint returns an endpoint for (P)roduction, (T)esting or (D)evelopment
-func LookupEndpoint(s string) Endpoint {
-	s2 := strings.ToUpper(s)
-	switch {
-	case strings.HasPrefix(s2, "P"):
-		return ProductionEndpoint
-	case strings.HasPrefix(s2, "T"):
-		return TestingEndpoint
-	case strings.HasPrefix(s2, "D"):
-		return DevelopmentEndpoint
-	}
-	return UnknownEndpoint
-}
-
-// URL returns the default URL of this endpoint
-func (ep Endpoint) URL() string {
-	return endpointURLs[ep]
-}
-
-// ProcessingID returns the processing ID for this endpoint
-func (ep Endpoint) ProcessingID() string {
-	return endpointCodes[ep]
-}
-
-// Name returns the name of this endpoint
-func (ep Endpoint) Name() string {
-	return endpointNames[ep]
-}
-
 // App represents the EMPI application
 type App struct {
-	Endpoint       Endpoint
 	EndpointURL    string       // override URL for the specified endpoint
+	ProcessingID   string       // processing ID to use; their definitions are: P production, U testing, T development
 	Cache          *cache.Cache // may be nil if not caching
 	Fake           bool
 	TimeoutSeconds int
@@ -154,7 +93,7 @@ func (app *App) GetInternalEMPIRequest(ctx context.Context, req *apiv1.Identifie
 		timeout = 1
 	}
 	ctx, cancelFunc := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
-	pt, err := performRequest(ctx, app.EndpointURL, app.Endpoint.ProcessingID(), authority, req.Value)
+	pt, err := performRequest(ctx, app.EndpointURL, app.ProcessingID, authority, req.Value)
 	cancelFunc()
 	if err != nil {
 		if urlError, ok := err.(*url.Error); ok {

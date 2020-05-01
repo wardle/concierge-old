@@ -78,10 +78,10 @@ func init() {
 	viper.BindPFlag("fake", rootCmd.PersistentFlags().Lookup("fake"))
 
 	// empi configuration
-	rootCmd.PersistentFlags().String("empi-endpoint", "D", "EMPI endpoint - (P)roduction, (T)est or (D)evelopment")
-	viper.BindPFlag("empi-endpoint", rootCmd.PersistentFlags().Lookup("empi-endpoint"))
-	rootCmd.PersistentFlags().String("empi-endpoint-url", "", "URL for EMPI endpoint (if different to default for P/T/D")
-	viper.BindPFlag("empi-endpoint-url", rootCmd.PersistentFlags().Lookup("empi-endpoint-url"))
+	rootCmd.PersistentFlags().String("empi-url", "", "URL for EMPI endpoint")
+	viper.BindPFlag("empi-url", rootCmd.PersistentFlags().Lookup("empi-url"))
+	rootCmd.PersistentFlags().String("empi-processing-id", "P", "Processing ID, P: Production U: User Acceptance Testing, T: Test (development)")
+	viper.BindPFlag("empi-processing-id", rootCmd.PersistentFlags().Lookup("empi-processing-id"))
 	rootCmd.PersistentFlags().Int("empi-timeout-seconds", 2, "Timeout for calls to EMPI backend server endpoint(s)")
 	viper.BindPFlag("empi-timeout-seconds", rootCmd.PersistentFlags().Lookup("empi-timeout-seconds"))
 	rootCmd.PersistentFlags().Int("empi-cache-minutes", 5, "EMPI cache expiration in minutes, 0=no cache")
