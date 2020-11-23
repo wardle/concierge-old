@@ -1,3 +1,7 @@
+This has now been archived and replaced by [https://github.com/wardle/jconcierge](https://github.com/wardle/jconcierge).
+
+-----
+
 # Concierge
 
 Concierge is a suite of health and care integration modules, abstracting and simplifing integrations with underlying health and care systems. 
